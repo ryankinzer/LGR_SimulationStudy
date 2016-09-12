@@ -1,7 +1,7 @@
 # Author: Kevin See
 # Purpose: Simulate data to estimate total escapement over Lower Granite Dam
 # Created: 8/10/2016
-# Last Modified: 9/2/2016
+# Last Modified: 9/12/2016
 # Notes: Based on code provided by Ryan Kinzer. Currently works on a daily time-step, then summarises it to a weekly time-step.
 
 #-----------------------------------------------------------------
@@ -61,7 +61,7 @@ SimulateLGRdata = function(N.lgr = 100000,
   
   # Assign Origin - Wild, Hatchery, Hatchery No Clip
   w.alpha  <- rep(1, sum(n.pops))
-  h.alpha <- rbinom(sum(n.pops), 1, hatch.pop.prob)
+  h.alpha <- ifelse(rbinom(sum(n.pops), 1, hatch.pop.prob)==1,2,0)
   nc.alpha <- rbinom(sum(n.pops), 1, hnc.pop.prob)
   
   origin.alpha <- cbind(w.alpha, h.alpha, nc.alpha)
@@ -319,4 +319,39 @@ SimulateLGRobs = function(sim_params,
   
   return(list('by_origin' = lgr_week_org,
               'obs' = lgr_week_obs))
+}
+
+
+# Re-formats weekly $obs object (output from SimulateLGRobs function) for use as SCOBI input
+formatSCOBI_inputs <- function(weekly_obs, LGR_truth){
+  # window_obs = output from SimulateLGRobs function; object$obs
+  # LGR_truth = output from SimulateLGRdata function; obeject$sim
+  
+  win_cnt_tmp = weekly_obs %>%
+    select(WeekNumber = Week,
+           Counts = win_cnt) 
+    
+  fish_data <- LGR_truth %>%
+    filter(Trap == 1) %>%
+    select(WeekNumber = Week, Rear = Origin, GenStock = Population) %>%
+    mutate(Rear = revalue(Rear, c("NOR" = "W",
+                                  "HOR" = "H",
+                                  "HNC" = "HNC"))) %>%
+    arrange(WeekNumber)
+    
+  window_count <- fish_data %>%
+    group_by(WeekNumber,Rear) %>%
+    summarise(n = n()) %>%
+    spread(Rear,n) %>%
+    ungroup() %>%
+    full_join(win_cnt_tmp) %>%
+    mutate_each(funs(replace(.,which(is.na(.)),0))) %>%
+    arrange(WeekNumber) %>%
+    mutate(W_age = round(W/2,0),
+           Cumsum = cumsum(W_age),
+           Collaps = cumsum(W_age >= 100)+1L)  %>%  # Does not collapse following IDFG's rule set.
+    select(Strata = WeekNumber, Counts, Collaps)
+  
+  return(list('window_count' = as.data.frame(window_count),
+              'fish_data' = as.data.frame(fish_data)))
 }
