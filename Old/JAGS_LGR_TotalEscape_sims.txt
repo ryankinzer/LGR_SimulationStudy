@@ -1,0 +1,136 @@
+model {
+
+	####################################
+	# Set up parameters and initial states...
+	####################################
+	for(i in 1:3){
+		acf[i] ~ dunif(-2,2) # unif prior on temporal correlation @ lag 1 
+	}
+	
+	X.sigma ~ dunif(0, 20) # process error in log space
+	X.tau <- pow(X.sigma, -2)
+	X.log.all[1] ~ dunif(0,10) # initial state in log space
+	
+	# for over-dispersed negative binomial
+	r ~ dgamma(0.001, 0.001)
+	k <- 1/r
+# 	p ~ dbeta(1,1)
+	
+# 	log.alpha ~ dnorm(0, 0.0001)
+# 	alpha <- exp(log.alpha)
+			
+	# modeling proportion of fish available for window counts
+	win.prop.avg ~ dbeta(1,1)	# avg daytime ascension rate
+	win.prop.avg.logit <- logit(win.prop.avg)
+	win.prop.true.logit[1] ~ dnorm(win.prop.avg.logit, win.prop.tau)
+	win.prop.sigma ~ dunif(0, 10) # process error on window proportion correction
+	win.prop.tau <- pow(win.prop.sigma, -2)
+	
+	# modeling proportion of fish re-ascending the dam
+	reasc.avg ~ dbeta(1,1)	# avg re-ascension rate
+	reasc.avg.logit <- logit(reasc.avg)
+	reasc.true.logit[1] ~ dnorm(reasc.avg.logit, reasc.tau)
+	reasc.sigma ~ dunif(0, 10) # process error on re-ascension proportion correction
+	reasc.tau <- pow(reasc.sigma, -2)
+
+	# modeling proportion of fish that are wild
+	wnc.avg ~ dbeta(1,1)	# avg proportion of fish that are wild
+	wnc.avg.logit <- logit(wnc.avg)
+	wnc.true.logit[1] ~ dnorm(wnc.avg.logit, wnc.tau)
+	wnc.sigma ~ dunif(0, 10) # process error on wild proportion
+	wnc.tau <- pow(wnc.sigma, -2)
+
+	
+	# parameter clean-up				
+	for(i in 1:TotLadderWeeks) {
+		win.prop.true[i] <- ilogit(win.prop.true.logit[i])
+		reasc.true[i] <- ilogit(reasc.true.logit[i])
+		wnc.true[i] <- ilogit(wnc.true.logit[i])
+	}
+	
+	####################################
+	## True state of nature
+	####################################
+		
+	for(i in 2:TotLadderWeeks) {
+		# random walk
+		X.log.all[i] ~ dnorm(X.log.all[i-1], X.tau)		
+		
+		# autocorrelated random walks
+		win.prop.mu[i] <- win.prop.avg.logit * (1-acf[1]) + acf[1] * logit(true.prop[i-1])
+		win.prop.true.logit[i] ~ dnorm(win.prop.mu[i], win.prop.tau)
+		
+		reasc.mu[i] <- reasc.avg.logit * (1-acf[2]) + acf[2] * reasc.true.logit[i-1]
+		reasc.true.logit[i] ~ dnorm(reasc.mu[i], reasc.tau)
+			
+		wnc.mu[i] <- wnc.avg.logit[1] * (1-acf[3]) + acf[3] * wnc.true.logit[i-1]
+		wnc.true.logit[i] ~ dnorm(wnc.mu[i], wnc.tau)
+	}
+		
+	# derived parameters
+	for(i in 1:TotLadderWeeks) {
+		true.prop[i] <- win.prop.true[i]
+		
+		X.all[i] <- round(exp(X.log.all[i]))
+		X.day[i] <- round(X.all[i] * true.prop[i])
+		X.night[i] <- X.all[i] - X.day[i]
+		X.reasc[i] <- round(X.all[i] * reasc.true[i])
+		
+		X.all.wild.pbt[i] <- round(X.all[i] * wnc.true[i])
+		X.new.wild.pbt[i] <- round(X.all.wild.pbt[i] * (1-reasc.true[i]))
+		X.reasc.wild.pbt[i] <- X.all.wild.pbt[i] - X.new.wild.pbt[i]
+		X.night.wild.pbt[i] <- X.new.wild.pbt[i] * (1-true.prop[i])
+
+	}
+				
+	####################################
+	## What we observe
+	####################################
+	
+	for(i in 1:TotLadderWeeks) {
+		# at window: Poisson
+# 		Y.window[i] ~ dpois(X.day[i])
+
+		# at window: over-dispersed negative binomial
+		# overdispersed if r is small, approximately Poisson if r is very large
+		p[i] <- r / (r + X.day[i])
+		Y.window[i] ~ dnegbin(p[i], r)
+		
+# 		r[i] <- p * X.day[i] / (1 - p)
+# 		Y.window[i] ~ dnegbin(p, r[i])
+		
+# 		r[i] ~ dgamma(alpha, alpha)
+# 		Y.window[i] ~ dpois(r[i] * X.day[i])
+
+		# in trap
+		# uncertainty in trap rate
+		trap.rate.true[i] ~ dbeta(trap.alpha[i], trap.beta[i])
+		Y.trap[i] ~ dbin(trap.rate.true[i], X.all[i])
+		
+		# wild fish in trap
+		wild.pbt[i] ~ dbin(wnc.true[i], trap.fish[i])
+
+		# day-time tags
+		DC.tags[i] ~ dbin(win.prop.true[i], Tot.tags[i])
+				
+		# re-ascension tags
+		ReAsc.tags[i] ~ dbin(reasc.true[i], Tot.tags[i])
+	}
+	
+	####################################
+	## Summary statistics
+	####################################
+	
+	X.tot.all <- sum(X.all)
+	X.tot.day <- sum(X.day)
+	X.tot.night <- sum(X.night)
+	X.tot.reasc <- sum(X.reasc)
+
+	X.tot.all.wild.pbt <- sum(X.all.wild.pbt)
+	X.tot.new.wild.pbt <- sum(X.new.wild.pbt)
+	X.tot.night.wild.pbt <- sum(X.night.wild.pbt)
+	X.tot.reasc.wild.pbt <- sum(X.reasc.wild.pbt)
+
+	prop.tagged.pbt <- sum(wild.pbt) / X.tot.new.wild.pbt
+		
+}
