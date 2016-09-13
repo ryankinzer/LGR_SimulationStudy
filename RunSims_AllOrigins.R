@@ -1,10 +1,17 @@
 # Author: Kevin See
 # Purpose: Simulate a number of LGR-like datasets, and estimate escapement using ISEMP model
 # Created: 8/31/2016
-# Last Modified: 9/2/2016
+# Last Modified: 9/12/2016
 # Notes: 
 
 #-----------------------------------------------------------------
+# these functions contains the scripts to run the SCOBI estimator
+source('SCOBI/SCOBIv2.R')
+source('SCOBI/SCSrank.R')
+
+# load needed packages
+library(Hmisc) # needed for SCOBI model
+# library(SCOBI)
 library(MCMCpack)
 library(FSA)
 library(Rcapture)
@@ -18,11 +25,12 @@ library(tidyr)
 library(ggplot2)
 library(jagsUI)
 
+
 theme_set(theme_bw())
-setwd('IDFG_Comparison/SimulationStudy')
 
 # this contains the function to simulate data
 source('SimFnc.R')
+
 
 #-----------------------------------------------------------------
 # set mcmc parameters
@@ -93,7 +101,7 @@ for(i in 1:n_sim) {
   #                          fallback.rate = 0.12,
   #                          reascension.rate = 0.9,
   #                          night.passage.rate = 0.05,
-  #                          window.rate = 1,
+  #                          # window.rate = 1,
   #                          marked.rate = 0.07,
   #                          ladder.det = 0.99)
   
@@ -102,7 +110,7 @@ for(i in 1:n_sim) {
   
   # generate weekly observations
   # theta is used to control how much observation error is put on window counts. Higher theta = less error
-  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, theta = 100, perfect.window = F)
+  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, theta = 100, perfect.window = T)
   
   # filter for spring/summer Chinook dates
   lgr_truth %<>%
@@ -188,6 +196,30 @@ for(i in 1:n_sim) {
               upp_ci = HPDinterval(as.mcmc(value), prob = 0.95)[,2]) %>%
     ungroup()
   
+  # Format data for use in SCOBI model
+  scobi_dat = formatSCOBI_inputs(lgr_week$obs, lgr_truth) # uses the same output for ISEMP model run
+  
+  scobi_est = SCOBIv2(adultData = scobi_dat$fish_data, 
+                      windowData = scobi_dat$window_count, 
+                      Run = "chnkDemo",
+                      RTYPE = "W", 
+                      Primary = "GenStock", 
+                      Secondary = NA, 
+                      alph = 0.05, 
+                      B = 1000, 
+                      writeOutput = FALSE)
+  
+  scobi_summ = scobi_est$Rearing %>% as.data.frame() %>%
+    mutate(RearType = rownames(scobi_est$Rearing)) %>%
+    select(Variable = RearType, Estimates:U) %>% tbl_df() %>%
+    mutate(Variable = revalue(Variable,
+                              c('W' = 'Unique.Wild.Fish',
+                                'H' = 'Unique.Hatch.Fish',
+                                'HNC' = 'Unique.HNC.Fish'))) %>%
+    rename(SCOBI_est = Estimates,
+           SCOBI_lowCI = L,
+           SCOBI_uppCI = U)
+    
   # compare with "truth" from simulated data
   true_var = lgr_truth %>%
     summarise(All.Fish = length(id),
@@ -215,7 +247,9 @@ for(i in 1:n_sim) {
   
   res[[i]] = true_var %>%
     inner_join(tot_summ) %>%
-    mutate(inCI = ifelse(Truth >= low_ci & Truth <= upp_ci, T, F))
+    left_join(scobi_summ) %>%
+    mutate(ISEMP_inCI = ifelse(Truth >= low_ci & Truth <= upp_ci, T, F),
+           SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
   sim_list[[i]] = my_sim
   obs_list[[i]] = lgr_week
@@ -236,7 +270,8 @@ res_df = ldply(res, .id = 'sim') %>% tbl_df
 
 res_df %>%
   group_by(Variable) %>%
-  summarise(coverage95 = sum(inCI) / n())
+  summarise(ISEMP_cover95 = sum(ISEMP_inCI) / n(),
+            SCOBI_cover95 = sum(SCOBI_inCI) / n())
 
 qplot(Truth, median, data = res_df, color = Variable, log = 'xy') + 
   geom_abline()
