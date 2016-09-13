@@ -273,18 +273,28 @@ res_df %>%
   summarise(ISEMP_cover95 = sum(ISEMP_inCI) / n(),
             SCOBI_cover95 = sum(SCOBI_inCI) / n())
 
+res_long_df <- res_df %>%
+  select(sim:Truth, ISEMP_est = median, ISEMP_lowCI = low_ci, ISEMP_uppCI = upp_ci,
+         SCOBI_est:SCOBI_inCI) %>%
+  gather(key, N, -sim, -Variable, -Truth) %>%
+  separate(key,into = c("Model","key"), sep="_") %>%
+  spread(key,N) %>%
+  mutate(bias = est - Truth,
+         rel_bias = bias / Truth)
+
 qplot(Truth, SCOBI_est, data = res_df, color = Variable, log = 'xy') + 
   geom_abline()
 
 res_df %>%
-  mutate(bias = SCOBI_est - Truth,
+  mutate(bias = median - Truth,
          rel_bias = bias / Truth) %>%
   ggplot(aes(x = Variable,
              fill = Variable,
-             y = bias)) +
+             y = rel_bias)) +
   geom_boxplot() +
   geom_hline(yintercept = 0,
-             linetype = 2)
+             linetype = 2)+
+  theme(axis.text.x = element_text(angle = 90,hjust =1, vjust = .25))
 
 res_df %>%
   filter(grepl('^Unique', Variable)) %>%
@@ -303,3 +313,35 @@ res_df %>%
   geom_hline(yintercept = 0,
              linetype = 2) +
   facet_wrap(~ Variable, scales ='free')
+
+pd = .4
+
+res_long_df %>%
+  filter(grepl('^Unique', Variable)) %>%
+  mutate(low_bias = lowCI - Truth,
+         upp_bias = uppCI - Truth) %>%
+  ggplot(aes(x = sim,
+             y = bias,
+             color = Model)) +
+  geom_errorbar(aes(ymin = low_bias,
+                    ymax = upp_bias),
+                position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_wrap(~Variable, scales = 'free') +
+  scale_color_brewer(palette = 'Set1')
+
+res_long_df %>%
+  filter(Model == "ISEMP") %>%
+  ggplot(aes(x = sim,
+             y = est,
+             color = Model)) +
+  geom_errorbar(aes(ymin = lowCI,
+                    ymax = uppCI),
+                position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  facet_wrap(~Variable, scales = 'free') +
+  scale_color_brewer(palette = 'Set1')
+  
+  
