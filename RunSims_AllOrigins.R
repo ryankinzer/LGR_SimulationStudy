@@ -72,14 +72,13 @@ n_sim = 10
 my_trap_rate = data.frame(Week = 1:52,
                           trap.rate = 0.07)
 
-# # shut trap down for a few weeks
-# my_trap_rate %<>%
-#   mutate(trap.rate = ifelse(Week %in% 22:24, 0, trap.rate))
+# change trap rate part-way through season
+my_trap_rate %<>%
+  mutate(trap.rate = ifelse(Week > 20, 0.15, trap.rate))
 
-# # change trap rate part-way through season
-# my_trap_rate %<>%
-#   mutate(trap.rate = ifelse(Week > 20, 0.15, trap.rate))
-
+# shut trap down for a few weeks
+my_trap_rate %<>%
+  mutate(trap.rate = ifelse(Week %in% 22:24, 0, trap.rate))
 
 #-----------------------------------------------------------------
 # run simulations
@@ -91,6 +90,8 @@ mod_list = obs_list = sim_list = res
 
 set.seed(5)
 
+tot_ptm = proc.time()
+
 for(i in 1:n_sim) {
   cat(paste('Starting simulation #', i, '\n'))
   
@@ -99,7 +100,7 @@ for(i in 1:n_sim) {
   
   # my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate,
   #                          fallback.rate = 0.12,
-  #                          reascension.rate = 0.9,
+  #                          reascension.rate = 1,
   #                          night.passage.rate = 0.05,
   #                          # window.rate = 1,
   #                          marked.rate = 0.07,
@@ -225,10 +226,10 @@ for(i in 1:n_sim) {
                               c('W' = 'Unique.Wild.Fish',
                                 'H' = 'Unique.Hatch.Fish',
                                 'HNC' = 'Unique.HNC.Fish'))) %>%
-    bind_rows(data.frame(Variable = 'Unique.Fish',
-                         scobi_est$Rearing %>% as.data.frame() %>%
-                           select(1:3) %>%
-                           colSums() %>% as.data.frame() %>% t())) %>%
+    # bind_rows(data.frame(Variable = 'Unique.Fish',
+    #                      scobi_est$Rearing %>% as.data.frame() %>%
+    #                        select(1:3) %>%
+    #                        colSums() %>% as.data.frame() %>% t())) %>%
     rename(SCOBI_est = Estimates,
            SCOBI_lowCI = L,
            SCOBI_uppCI = U)
@@ -271,6 +272,7 @@ for(i in 1:n_sim) {
   
   cat(paste('Finished simulation #', i, '\n'))
 }
+cat(paste('Took', round(c(proc.time() - tot_ptm)[3] / 60, 2), 'min to run all', n_sim, 'sims in total. \n'))
 
 # save results
 # save(res, sim_list, obs_list, mod_list, file = 'SimulationFits/SimResults.rda')
@@ -296,14 +298,21 @@ qplot(SCOBI_est, ISEMP_est, data = res_df, color = Variable, log = 'xy') +
 
 
 res_df %>%
-  mutate(bias = ISEMP_est - Truth,
+  select(sim:ISEMP_est, SCOBI_est) %>%
+  gather(source, est, -(sim:Truth)) %>%
+  mutate(source = gsub('_est$', '', source)) %>%
+  mutate(bias = est - Truth,
          rel_bias = bias / Truth) %>%
   ggplot(aes(x = Variable,
              fill = Variable,
              y = rel_bias)) +
   geom_boxplot() +
+  scale_fill_brewer(palette = 'Set3') +
   geom_hline(yintercept = 0,
-             linetype = 2)
+             linetype = 2) +
+  facet_wrap(~ source, scales = 'free_x') +
+  theme(axis.text.x = element_blank())
+  # theme(axis.text.x = element_text(angle = 90))
 
 res_df %>%
   filter(grepl('^Unique', Variable)) %>%
