@@ -89,7 +89,7 @@ res = vector('list', n_sim)
 names(res) = 1:n_sim
 mod_list = obs_list = sim_list = res
 
-set.seed(7)
+set.seed(5)
 
 for(i in 1:n_sim) {
   cat(paste('Starting simulation #', i, '\n'))
@@ -129,6 +129,9 @@ for(i in 1:n_sim) {
                  select(Week, Start_Date) %>%
                  distinct()) %>%
     select(Start_Date, Week, Origin, everything()) %>%
+    mutate(Week = Week - min(Week) + 1)
+  
+  lgr_truth %<>%
     mutate(Week = Week - min(Week) + 1)
   
   # pull data together for JAGS
