@@ -36,13 +36,13 @@ source('SimFnc.R')
 # set mcmc parameters
 #-----------------------------------------------------------------
 # number of total samples
-mcmc.chainLength = 12000
+mcmc.chainLength = 7000
 
 # number of burn-in samples
 mcmc.burn = 2000
 
 # thinning interval
-mcmc.thin = 20
+mcmc.thin = 10
 
 # number of MCMC chains
 mcmc.chains = 4
@@ -134,6 +134,10 @@ for(i in 1:n_sim) {
   lgr_truth %<>%
     mutate(Week = Week - min(Week) + 1)
   
+  #-------------#
+  # ISEMP model #
+  #-------------#
+  
   # pull data together for JAGS
   org_exist = lgr_week$obs %>% select(wild_fish, hatch_fish, HNC_fish) %>% colSums()
   org_exist = ifelse(org_exist > 0, 1, org_exist)
@@ -190,13 +194,16 @@ for(i in 1:n_sim) {
   # summarise posterior
   tot_summ = tot_post %>%
     group_by(Variable) %>%
-    summarise(mean = mean(value),
-              median = median(value),
-              se = sd(value),
-              cv = se / mean,
-              low_ci = HPDinterval(as.mcmc(value), prob = 0.95)[,1],
-              upp_ci = HPDinterval(as.mcmc(value), prob = 0.95)[,2]) %>%
+    summarise(ISEMP_est = median(value),
+              # se = sd(value),
+              # cv = se / mean,
+              ISEMP_lowCI = HPDinterval(as.mcmc(value), prob = 0.95)[,1],
+              ISEMP_uppCI = HPDinterval(as.mcmc(value), prob = 0.95)[,2]) %>%
     ungroup()
+  
+  #-------------#
+  # SCOBI model #
+  #-------------#
   
   # Format data for use in SCOBI model
   scobi_dat = formatSCOBI_inputs(lgr_week$obs, lgr_truth) # uses the same output for ISEMP model run
@@ -218,6 +225,10 @@ for(i in 1:n_sim) {
                               c('W' = 'Unique.Wild.Fish',
                                 'H' = 'Unique.Hatch.Fish',
                                 'HNC' = 'Unique.HNC.Fish'))) %>%
+    bind_rows(data.frame(Variable = 'Unique.Fish',
+                         scobi_est$Rearing %>% as.data.frame() %>%
+                           select(1:3) %>%
+                           colSums() %>% as.data.frame() %>% t())) %>%
     rename(SCOBI_est = Estimates,
            SCOBI_lowCI = L,
            SCOBI_uppCI = U)
@@ -249,7 +260,7 @@ for(i in 1:n_sim) {
   res[[i]] = true_var %>%
     inner_join(tot_summ) %>%
     left_join(scobi_summ) %>%
-    mutate(ISEMP_inCI = ifelse(Truth >= low_ci & Truth <= upp_ci, T, F),
+    mutate(ISEMP_inCI = ifelse(Truth >= ISEMP_lowCI & Truth <= ISEMP_uppCI, T, F),
            SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
   # sim_list[[i]] = my_sim
@@ -277,12 +288,19 @@ res_df %>%
 qplot(Truth, SCOBI_est, data = res_df, color = Variable, log = 'xy') + 
   geom_abline()
 
+qplot(Truth, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
+  geom_abline()
+
+qplot(SCOBI_est, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
+  geom_abline()
+
+
 res_df %>%
-  mutate(bias = SCOBI_est - Truth,
+  mutate(bias = ISEMP_est - Truth,
          rel_bias = bias / Truth) %>%
   ggplot(aes(x = Variable,
              fill = Variable,
-             y = bias)) +
+             y = rel_bias)) +
   geom_boxplot() +
   geom_hline(yintercept = 0,
              linetype = 2)
