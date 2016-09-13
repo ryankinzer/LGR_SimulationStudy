@@ -97,7 +97,7 @@ scobi <- SCOBIv2(adultData = scobi_dat$fish_data, windowData = scobi_dat$window_
           RTYPE = "W", Primary = "GenStock", Secondary = NA, alph = 0.1, B = 100, writeOutput = FALSE)
 
 
-Nstar[i,1] <- dim(tmp$sim[tmp$sim$Origin == "NOR",])[1]  # Truth
+Nstar[i,1] <- dim(tmp$sim[tmp$sim$Origin == "NOR" & tmp$sim$Reascent == 0,])[1]  # Truth
 Nstar[i,2] <- scobi$Rearing[1,1]
 Nstar[i,3] <- scobi$Rearing[1,2] 
 Nstar[i,4] <- scobi$Rearing[1,3]
