@@ -96,7 +96,7 @@ for(i in 1:n_sim) {
   
   # simulate data
   my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate)
-
+  
   # my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate,
   #                          fallback.rate = 0.12,
   #                          reascension.rate = 0.9,
@@ -119,8 +119,8 @@ for(i in 1:n_sim) {
   
   lgr_week$obs %<>%
     inner_join(lgr_truth %>%
-                select(Week, Start_Date) %>%
-                distinct()) %>%
+                 select(Week, Start_Date) %>%
+                 distinct()) %>%
     select(Start_Date, Week, everything()) %>%
     mutate(Week = Week - min(Week) + 1)
   
@@ -232,7 +232,7 @@ for(i in 1:n_sim) {
     rename(SCOBI_est = Estimates,
            SCOBI_lowCI = L,
            SCOBI_uppCI = U)
-    
+  
   # compare with "truth" from simulated data
   true_var = lgr_truth %>%
     summarise(All.Fish = length(id),
