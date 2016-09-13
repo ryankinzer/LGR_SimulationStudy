@@ -11,7 +11,6 @@ source('SCOBI/SCSrank.R')
 
 # load needed packages
 library(Hmisc) # needed for SCOBI model
-# library(SCOBI)
 library(MCMCpack)
 library(FSA)
 library(Rcapture)
@@ -72,13 +71,13 @@ n_sim = 10
 my_trap_rate = data.frame(Week = 1:52,
                           trap.rate = 0.07)
 
-# change trap rate part-way through season
-my_trap_rate %<>%
-  mutate(trap.rate = ifelse(Week > 20, 0.15, trap.rate))
-
-# shut trap down for a few weeks
-my_trap_rate %<>%
-  mutate(trap.rate = ifelse(Week %in% 22:24, 0, trap.rate))
+# # change trap rate part-way through season
+# my_trap_rate %<>%
+#   mutate(trap.rate = ifelse(Week > 20, 0.15, trap.rate))
+# 
+# # shut trap down for a few weeks
+# my_trap_rate %<>%
+#   mutate(trap.rate = ifelse(Week %in% 22:24, 0, trap.rate))
 
 #-----------------------------------------------------------------
 # run simulations
@@ -102,7 +101,6 @@ for(i in 1:n_sim) {
   #                          fallback.rate = 0.12,
   #                          reascension.rate = 1,
   #                          night.passage.rate = 0.05,
-  #                          # window.rate = 1,
   #                          marked.rate = 0.07,
   #                          ladder.det = 0.99)
   
@@ -316,9 +314,6 @@ res_df %>%
 
 res_df %>%
   filter(grepl('^Unique', Variable)) %>%
-  # mutate(bias = median - Truth,
-  #        low_bias = low_ci - Truth,
-  #        upp_bias = upp_ci - Truth) %>%
   mutate(bias = SCOBI_est - Truth,
          low_bias = SCOBI_lowCI - Truth,
          upp_bias = SCOBI_uppCI - Truth) %>%
