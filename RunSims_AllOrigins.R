@@ -251,11 +251,11 @@ for(i in 1:n_sim) {
     mutate(ISEMP_inCI = ifelse(Truth >= low_ci & Truth <= upp_ci, T, F),
            SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
-  sim_list[[i]] = my_sim
-  obs_list[[i]] = lgr_week
-  mod_list[[i]] = adult.pass.mod
+  # sim_list[[i]] = my_sim
+  # obs_list[[i]] = lgr_week
+  # mod_list[[i]] = adult.pass.mod
   
-  rm(my_sim, lgr_truth, lgr_week, jags.data, adult.pass.mod, true_var, tot_summ, tot_post)
+  rm(my_sim, lgr_truth, lgr_week, jags.data, adult.pass.mod, true_var, tot_summ, tot_post, scobi_dat, scobi_est, scobi_summ)
   
   cat(paste('Finished simulation #', i, '\n'))
 }
@@ -273,11 +273,11 @@ res_df %>%
   summarise(ISEMP_cover95 = sum(ISEMP_inCI) / n(),
             SCOBI_cover95 = sum(SCOBI_inCI) / n())
 
-qplot(Truth, median, data = res_df, color = Variable, log = 'xy') + 
+qplot(Truth, SCOBI_est, data = res_df, color = Variable, log = 'xy') + 
   geom_abline()
 
 res_df %>%
-  mutate(bias = median - Truth,
+  mutate(bias = SCOBI_est - Truth,
          rel_bias = bias / Truth) %>%
   ggplot(aes(x = Variable,
              fill = Variable,
@@ -286,3 +286,20 @@ res_df %>%
   geom_hline(yintercept = 0,
              linetype = 2)
 
+res_df %>%
+  filter(grepl('^Unique', Variable)) %>%
+  # mutate(bias = median - Truth,
+  #        low_bias = low_ci - Truth,
+  #        upp_bias = upp_ci - Truth) %>%
+  mutate(bias = SCOBI_est - Truth,
+         low_bias = SCOBI_lowCI - Truth,
+         upp_bias = SCOBI_uppCI - Truth) %>%
+  ggplot(aes(x = sim,
+             y = bias,
+             color = Variable)) +
+  geom_errorbar(aes(ymin = low_bias,
+                    ymax = upp_bias)) +
+  geom_point() +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_wrap(~ Variable, scales ='free')
