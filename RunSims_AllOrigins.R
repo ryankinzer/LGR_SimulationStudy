@@ -179,8 +179,7 @@ for(i in 1:n_sim) {
                         'Unique.HNC.Fish' = X.tot.new.hnc,
                         'Daytime.Fish' = X.tot.day, 
                         'Reascent.Fish' = X.tot.reasc, 
-                        'Night.Wild.Fish' = X.tot.night.wild, 
-                        'Wild.Reascents'= X.tot.reasc.wild), 
+                        'Night.Fish' = X.tot.night), 
                    .id='Variable') %>% tbl_df() %>%
     gather(iteration, value, -Variable) %>%
     mutate(iteration = gsub('^V', '', iteration),
@@ -228,13 +227,12 @@ for(i in 1:n_sim) {
     summarise(All.Fish = length(id),
               Unique.Fish = n_distinct(id),
               Daytime.Fish = sum(Day.passage),
-              Reascent.Fish = sum(Reascent)) %>%
+              Reascent.Fish = sum(Reascent),
+              Night.Fish = sum(Night.passage)) %>%
     bind_cols(lgr_truth %>%
                 filter(Origin == 'NOR') %>%
                 summarise(All.Wild.Fish = length(id),
-                          Unique.Wild.Fish = n_distinct(id),
-                          Night.Wild.Fish = sum(Night.passage),
-                          Wild.Reascents = sum(Reascent))) %>%
+                          Unique.Wild.Fish = n_distinct(id))) %>%
     bind_cols(lgr_truth %>%
                 filter(Origin == 'HOR') %>%
                 summarise(All.Hatch.Fish = length(id),
