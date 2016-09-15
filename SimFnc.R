@@ -13,10 +13,10 @@ SimulateLGRdata = function(N.lgr = 100000,
                            run.sd.mu = c(16,25),
                            run.sd.sd = c(8,2),
                            hatch.pop.prob = 0.5,
-                           hnc.pop.prob = 0.2,
-                           fallback.rate = .05,
+                           hnc.pop.prob = 0.15,
+                           fallback.rate = .06,
                            reascension.rate = 1,
-                           night.passage.rate = .05,
+                           night.passage.rate = .06,
                            window.rate = 50/60,
                            marked.rate = 0.05,
                            ladder.det = 0.99,
@@ -354,4 +354,10 @@ formatSCOBI_inputs <- function(weekly_obs, LGR_truth){
   
   return(list('window_count' = as.data.frame(window_count),
               'fish_data' = as.data.frame(fish_data)))
+}
+
+negbin_theta <- function(mu, error.rate) {
+  theta = mu^2 / ((error.rate*mu)^2 - mu) 
+
+  return(theta)
 }
