@@ -69,7 +69,7 @@ n_sim = 10
 
 # set trap rate on weekly basis
 my_trap_rate = data.frame(Week = 1:52,
-                          trap.rate = 0.07)
+                          trap.rate = 0.15)
 
 # # change trap rate part-way through season
 # my_trap_rate %<>%
@@ -317,3 +317,48 @@ res_df %>%
   geom_hline(yintercept = 0,
              linetype = 2) +
   facet_wrap(~ Variable, scales ='free')
+
+#------------------------------------------------------
+# Re-format res_df into long format of point ests.,
+# CI's and CIin for both Models : ISEMP, SCOBI
+#------------------------------------------------------
+res_long_df <- res_df %>%
+  gather(key, point, -sim, -Truth, -Variable) %>%
+  separate(key, into = c("Model","est"), sep = "_") %>%
+  spread(est,point) %>%
+  mutate(bias = est - Truth,
+         rel_bias = bias / Truth)
+
+pd = .4
+
+res_long_df %>%
+  filter(grepl('^Unique', Variable)) %>%
+  mutate(low_bias = lowCI - Truth,
+         upp_bias = uppCI - Truth) %>%
+  ggplot(aes(x = sim,
+             y = bias,
+             color = Model)) +
+  geom_errorbar(aes(ymin = low_bias,
+                    ymax = upp_bias),
+                position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_wrap(~Variable, scales = 'free') +
+  scale_color_brewer(palette = 'Set1')
+
+
+res_long_df %>%
+  mutate(low_bias = lowCI - Truth,
+         upp_bias = uppCI - Truth) %>%
+  ggplot(aes(x = sim,
+             y = bias,
+             color = Model)) +
+  geom_errorbar(aes(ymin = low_bias,
+                    ymax = upp_bias),
+                position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_wrap(~Variable, scales = 'free') +
+  scale_color_brewer(palette = 'Set1')
