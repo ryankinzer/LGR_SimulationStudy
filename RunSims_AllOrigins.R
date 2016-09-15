@@ -69,6 +69,7 @@ n_sim = 10
 
 # set trap rate on weekly basis
 my_trap_rate = data.frame(Week = 1:52,
+                          trap.rate = 0.15)
 
 # # change trap rate part-way through season
 # my_trap_rate %<>%
@@ -86,6 +87,7 @@ res = vector('list', n_sim)
 names(res) = 1:n_sim
 mod_list = obs_list = sim_list = res
 
+set.seed(5)
 
 tot_ptm = proc.time()
 
@@ -180,13 +182,7 @@ for(i in 1:n_sim) {
                         'Unique.HNC.Fish' = X.tot.new.hnc,
                         'Daytime.Fish' = X.tot.day, 
                         'Reascent.Fish' = X.tot.reasc, 
-<<<<<<< HEAD
-                        'Night.Fish' = X.tot.night, 
-                        'Wild.Reascents'= X.tot.reasc.wild,
-                        'Night.Wild.Fish' = X.tot.night.wild), 
-=======
                         'Night.Fish' = X.tot.night), 
->>>>>>> db862c2fcff947a74c3f63b60dd21bb179b51826
                    .id='Variable') %>% tbl_df() %>%
     gather(iteration, value, -Variable) %>%
     mutate(iteration = gsub('^V', '', iteration),
@@ -262,6 +258,9 @@ for(i in 1:n_sim) {
     mutate(ISEMP_inCI = ifelse(Truth >= ISEMP_lowCI & Truth <= ISEMP_uppCI, T, F),
            SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
+  # sim_list[[i]] = my_sim
+  # obs_list[[i]] = lgr_week
+  # mod_list[[i]] = adult.pass.mod
   
   rm(my_sim, lgr_truth, lgr_week, jags.data, adult.pass.mod, true_var, tot_summ, tot_post, scobi_dat, scobi_est, scobi_summ)
   
@@ -270,6 +269,7 @@ for(i in 1:n_sim) {
 cat(paste('Took', round(c(proc.time() - tot_ptm)[3] / 60, 2), 'min to run all', n_sim, 'sims in total. \n'))
 
 # save results
+# save(res, sim_list, obs_list, mod_list, file = 'SimulationFits/SimResults.rda')
 
 #-----------------------------------------------------------------
 # Examine results
@@ -328,8 +328,6 @@ res_df %>%
 # CI's and CIin for both Models : ISEMP, SCOBI
 #------------------------------------------------------
 res_long_df <- res_df %>%
-  select(sim:Truth, ISEMP_est = median, ISEMP_lowCI = low_ci, ISEMP_uppCI = upp_ci,
-         SCOBI_est:SCOBI_inCI) %>%
   gather(key, point, -sim, -Truth, -Variable) %>%
   separate(key, into = c("Model","est"), sep = "_") %>%
   spread(est,point) %>%
