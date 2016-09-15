@@ -55,7 +55,7 @@ data.frame(Each.Chain = (mcmc.chainLength - mcmc.burn) / mcmc.thin, All.Chains =
 #-----------------------------------------------------------------
 model.loc = 'LGR_TotalEscape_AllOrigins.txt'
 
-jags.params = c('X.log.all', 'X.all', 'X.day', 'X.night', 'X.reasc', 'X.all.wild', 'X.new.wild', 'X.all.hatch', 'X.new.hatch', 'X.all.hnc', 'X.new.hnc', 'X.reasc.wild', 'X.night.wild', 'X.tot.all', 'X.tot.day', 'X.tot.night', 'X.tot.reasc', 'X.tot.all.wild', 'X.tot.new.wild', 'X.tot.all.hatch', 'X.tot.new.hatch', 'X.tot.all.hnc', 'X.tot.new.hnc', 'X.tot.night.wild', 'X.tot.reasc.wild', 'prop.tagged', 'X.sigma', 'true.prop', 'win.prop.avg', 'win.prop.true', 'win.prop.sigma', 'hist.prop', 'reasc.avg', 'reasc.true', 'reasc.sigma', 'acf', 'org.prop', 'org.sigma', 'org.phi', 'trap.rate.true', 'r', 'k')
+jags.params = c('X.tot.all', 'X.tot.day', 'X.tot.night', 'X.tot.reasc', 'X.tot.new.wild', 'X.tot.new.hatch', 'X.tot.new.hnc', 'X.sigma', 'true.prop', 'win.prop.avg', 'win.prop.true', 'win.prop.sigma', 'reasc.avg', 'reasc.true', 'reasc.sigma', 'acf', 'org.prop', 'org.sigma', 'trap.rate.true', 'r', 'k', 'theta', 'omega')
 
 # set initial values
 jags.inits = function(){
@@ -109,7 +109,7 @@ for(i in 1:n_sim) {
   
   # generate weekly observations
   # theta is used to control how much observation error is put on window counts. Higher theta = less error
-  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, theta = 100, perfect.window = T)
+  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, theta = 3, perfect.window = T)
   
   # filter for spring/summer Chinook dates
   lgr_truth %<>%
@@ -170,19 +170,17 @@ for(i in 1:n_sim) {
                             DIC = FALSE,
                             verbose = F))
   cat(paste('Took', round(c(proc.time() - ptm)[3] / 60, 2), 'min to run. \n'))
+  if(class(adult.pass.mod) == 'try-error') next
   
   # pull out results from posteriors
   attach(adult.pass.mod$sims.list)
   tot_post = ldply(list('All.Fish' = X.tot.all, 
-                        'All.Wild.Fish' = X.tot.all.wild, 
-                        'Unique.Wild.Fish' = X.tot.new.wild,
-                        'All.Hatch.Fish' = X.tot.all.hatch, 
-                        'Unique.Hatch.Fish' = X.tot.new.hatch,
-                        'All.HNC.Fish' = X.tot.all.hnc, 
-                        'Unique.HNC.Fish' = X.tot.new.hnc,
                         'Daytime.Fish' = X.tot.day, 
                         'Reascent.Fish' = X.tot.reasc, 
-                        'Night.Fish' = X.tot.night), 
+                        'Night.Fish' = X.tot.night,
+                        'Unique.Wild.Fish' = X.tot.new.wild,
+                        'Unique.Hatch.Fish' = X.tot.new.hatch,
+                        'Unique.HNC.Fish' = X.tot.new.hnc), 
                    .id='Variable') %>% tbl_df() %>%
     gather(iteration, value, -Variable) %>%
     mutate(iteration = gsub('^V', '', iteration),
@@ -237,16 +235,13 @@ for(i in 1:n_sim) {
               Night.Fish = sum(Night.passage)) %>%
     bind_cols(lgr_truth %>%
                 filter(Origin == 'NOR') %>%
-                summarise(All.Wild.Fish = length(id),
-                          Unique.Wild.Fish = n_distinct(id))) %>%
+                summarise(Unique.Wild.Fish = n_distinct(id))) %>%
     bind_cols(lgr_truth %>%
                 filter(Origin == 'HOR') %>%
-                summarise(All.Hatch.Fish = length(id),
-                          Unique.Hatch.Fish = n_distinct(id))) %>%
+                summarise(Unique.Hatch.Fish = n_distinct(id))) %>%
     bind_cols(lgr_truth %>%
                 filter(Origin == 'HNC') %>%
-                summarise(All.HNC.Fish = length(id),
-                          Unique.HNC.Fish = n_distinct(id))) %>%
+                summarise(Unique.HNC.Fish = n_distinct(id))) %>%
     t() %>% as.data.frame()
   true_var = data.frame(Variable = row.names(true_var),
                         Truth = true_var$V1) %>% tbl_df()
@@ -258,9 +253,9 @@ for(i in 1:n_sim) {
     mutate(ISEMP_inCI = ifelse(Truth >= ISEMP_lowCI & Truth <= ISEMP_uppCI, T, F),
            SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
-  # sim_list[[i]] = my_sim
-  # obs_list[[i]] = lgr_week
-  # mod_list[[i]] = adult.pass.mod
+  sim_list[[i]] = my_sim
+  obs_list[[i]] = lgr_week
+  mod_list[[i]] = adult.pass.mod
   
   rm(my_sim, lgr_truth, lgr_week, jags.data, adult.pass.mod, true_var, tot_summ, tot_post, scobi_dat, scobi_est, scobi_summ)
   
@@ -299,7 +294,7 @@ res_df %>%
          rel_bias = bias / Truth) %>%
   ggplot(aes(x = Variable,
              fill = Variable,
-             y = rel_bias)) +
+             y = bias)) +
   geom_boxplot() +
   scale_fill_brewer(palette = 'Set3') +
   geom_hline(yintercept = 0,
