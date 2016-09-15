@@ -70,7 +70,6 @@ n_sim = 10
 
 # set trap rate on weekly basis
 my_trap_rate = data.frame(Week = 1:52,
-                          trap.rate = 0.07)
 
 # # shut trap down for a few weeks
 # my_trap_rate %<>%
@@ -89,7 +88,6 @@ res = vector('list', n_sim)
 names(res) = 1:n_sim
 mod_list = obs_list = sim_list = res
 
-set.seed(5)
 
 for(i in 1:n_sim) {
   cat(paste('Starting simulation #', i, '\n'))
@@ -256,9 +254,6 @@ for(i in 1:n_sim) {
     mutate(ISEMP_inCI = ifelse(Truth >= low_ci & Truth <= upp_ci, T, F),
            SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
-  # sim_list[[i]] = my_sim
-  # obs_list[[i]] = lgr_week
-  # mod_list[[i]] = adult.pass.mod
   
   rm(my_sim, lgr_truth, lgr_week, jags.data, adult.pass.mod, true_var, tot_summ, tot_post, scobi_dat, scobi_est, scobi_summ)
   
@@ -266,7 +261,6 @@ for(i in 1:n_sim) {
 }
 
 # save results
-# save(res, sim_list, obs_list, mod_list, file = 'SimulationFits/SimResults.rda')
 
 #-----------------------------------------------------------------
 # Examine results
@@ -340,8 +334,8 @@ res_long_df %>%
   facet_wrap(~Variable, scales = 'free') +
   scale_color_brewer(palette = 'Set1')
 
+
 res_long_df %>%
-  filter(Model == "ISEMP") %>%
   mutate(low_bias = lowCI - Truth,
          upp_bias = uppCI - Truth) %>%
   ggplot(aes(x = sim,
