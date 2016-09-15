@@ -11,7 +11,6 @@ source('SCOBI/SCSrank.R')
 
 # load needed packages
 library(Hmisc) # needed for SCOBI model
-# library(SCOBI)
 library(MCMCpack)
 library(FSA)
 library(Rcapture)
@@ -36,13 +35,13 @@ source('SimFnc.R')
 # set mcmc parameters
 #-----------------------------------------------------------------
 # number of total samples
-mcmc.chainLength = 12000
+mcmc.chainLength = 7000
 
 # number of burn-in samples
 mcmc.burn = 2000
 
 # thinning interval
-mcmc.thin = 20
+mcmc.thin = 10
 
 # number of MCMC chains
 mcmc.chains = 4
@@ -71,14 +70,13 @@ n_sim = 10
 # set trap rate on weekly basis
 my_trap_rate = data.frame(Week = 1:52,
 
-# # shut trap down for a few weeks
-# my_trap_rate %<>%
-#   mutate(trap.rate = ifelse(Week %in% 22:24, 0, trap.rate))
-
 # # change trap rate part-way through season
 # my_trap_rate %<>%
 #   mutate(trap.rate = ifelse(Week > 20, 0.15, trap.rate))
-
+# 
+# # shut trap down for a few weeks
+# my_trap_rate %<>%
+#   mutate(trap.rate = ifelse(Week %in% 22:24, 0, trap.rate))
 
 #-----------------------------------------------------------------
 # run simulations
@@ -89,17 +87,18 @@ names(res) = 1:n_sim
 mod_list = obs_list = sim_list = res
 
 
+tot_ptm = proc.time()
+
 for(i in 1:n_sim) {
   cat(paste('Starting simulation #', i, '\n'))
   
   # simulate data
   my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate)
-
+  
   # my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate,
   #                          fallback.rate = 0.12,
-  #                          reascension.rate = 0.9,
+  #                          reascension.rate = 1,
   #                          night.passage.rate = 0.05,
-  #                          # window.rate = 1,
   #                          marked.rate = 0.07,
   #                          ladder.det = 0.99)
   
@@ -117,8 +116,8 @@ for(i in 1:n_sim) {
   
   lgr_week$obs %<>%
     inner_join(lgr_truth %>%
-                select(Week, Start_Date) %>%
-                distinct()) %>%
+                 select(Week, Start_Date) %>%
+                 distinct()) %>%
     select(Start_Date, Week, everything()) %>%
     mutate(Week = Week - min(Week) + 1)
   
@@ -131,6 +130,10 @@ for(i in 1:n_sim) {
   
   lgr_truth %<>%
     mutate(Week = Week - min(Week) + 1)
+  
+  #-------------#
+  # ISEMP model #
+  #-------------#
   
   # pull data together for JAGS
   org_exist = lgr_week$obs %>% select(wild_fish, hatch_fish, HNC_fish) %>% colSums()
@@ -177,9 +180,13 @@ for(i in 1:n_sim) {
                         'Unique.HNC.Fish' = X.tot.new.hnc,
                         'Daytime.Fish' = X.tot.day, 
                         'Reascent.Fish' = X.tot.reasc, 
+<<<<<<< HEAD
                         'Night.Fish' = X.tot.night, 
                         'Wild.Reascents'= X.tot.reasc.wild,
                         'Night.Wild.Fish' = X.tot.night.wild), 
+=======
+                        'Night.Fish' = X.tot.night), 
+>>>>>>> db862c2fcff947a74c3f63b60dd21bb179b51826
                    .id='Variable') %>% tbl_df() %>%
     gather(iteration, value, -Variable) %>%
     mutate(iteration = gsub('^V', '', iteration),
@@ -190,13 +197,16 @@ for(i in 1:n_sim) {
   # summarise posterior
   tot_summ = tot_post %>%
     group_by(Variable) %>%
-    summarise(mean = mean(value),
-              median = median(value),
-              se = sd(value),
-              cv = se / mean,
-              low_ci = HPDinterval(as.mcmc(value), prob = 0.95)[,1],
-              upp_ci = HPDinterval(as.mcmc(value), prob = 0.95)[,2]) %>%
+    summarise(ISEMP_est = median(value),
+              # se = sd(value),
+              # cv = se / mean,
+              ISEMP_lowCI = HPDinterval(as.mcmc(value), prob = 0.95)[,1],
+              ISEMP_uppCI = HPDinterval(as.mcmc(value), prob = 0.95)[,2]) %>%
     ungroup()
+  
+  #-------------#
+  # SCOBI model #
+  #-------------#
   
   # Format data for use in SCOBI model
   scobi_dat = formatSCOBI_inputs(lgr_week$obs, lgr_truth) # uses the same output for ISEMP model run
@@ -221,7 +231,7 @@ for(i in 1:n_sim) {
     rename(SCOBI_est = Estimates,
            SCOBI_lowCI = L,
            SCOBI_uppCI = U)
-    
+  
   # compare with "truth" from simulated data
   true_var = lgr_truth %>%
     summarise(All.Fish = length(id),
@@ -232,9 +242,7 @@ for(i in 1:n_sim) {
     bind_cols(lgr_truth %>%
                 filter(Origin == 'NOR') %>%
                 summarise(All.Wild.Fish = length(id),
-                          Unique.Wild.Fish = n_distinct(id),
-                          Night.Wild.Fish = sum(Night.passage),
-                          Wild.Reascents = sum(Reascent))) %>%
+                          Unique.Wild.Fish = n_distinct(id))) %>%
     bind_cols(lgr_truth %>%
                 filter(Origin == 'HOR') %>%
                 summarise(All.Hatch.Fish = length(id),
@@ -251,7 +259,7 @@ for(i in 1:n_sim) {
   res[[i]] = true_var %>%
     inner_join(tot_summ) %>%
     left_join(scobi_summ) %>%
-    mutate(ISEMP_inCI = ifelse(Truth >= low_ci & Truth <= upp_ci, T, F),
+    mutate(ISEMP_inCI = ifelse(Truth >= ISEMP_lowCI & Truth <= ISEMP_uppCI, T, F),
            SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
   
@@ -259,6 +267,7 @@ for(i in 1:n_sim) {
   
   cat(paste('Finished simulation #', i, '\n'))
 }
+cat(paste('Took', round(c(proc.time() - tot_ptm)[3] / 60, 2), 'min to run all', n_sim, 'sims in total. \n'))
 
 # save results
 
@@ -275,21 +284,32 @@ res_df %>%
 qplot(Truth, SCOBI_est, data = res_df, color = Variable, log = 'xy') + 
   geom_abline()
 
+qplot(Truth, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
+  geom_abline()
+
+qplot(SCOBI_est, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
+  geom_abline()
+
+
 res_df %>%
-  mutate(bias = SCOBI_est - Truth,
+  select(sim:ISEMP_est, SCOBI_est) %>%
+  gather(source, est, -(sim:Truth)) %>%
+  mutate(source = gsub('_est$', '', source)) %>%
+  mutate(bias = est - Truth,
          rel_bias = bias / Truth) %>%
   ggplot(aes(x = Variable,
              fill = Variable,
-             y = bias)) +
+             y = rel_bias)) +
   geom_boxplot() +
+  scale_fill_brewer(palette = 'Set3') +
   geom_hline(yintercept = 0,
-             linetype = 2)
+             linetype = 2) +
+  facet_wrap(~ source, scales = 'free_x') +
+  theme(axis.text.x = element_blank())
+  # theme(axis.text.x = element_text(angle = 90))
 
 res_df %>%
   filter(grepl('^Unique', Variable)) %>%
-  # mutate(bias = median - Truth,
-  #        low_bias = low_ci - Truth,
-  #        upp_bias = upp_ci - Truth) %>%
   mutate(bias = SCOBI_est - Truth,
          low_bias = SCOBI_lowCI - Truth,
          upp_bias = SCOBI_uppCI - Truth) %>%
