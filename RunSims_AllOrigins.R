@@ -224,10 +224,6 @@ for(i in 1:n_sim) {
                               c('W' = 'Unique.Wild.Fish',
                                 'H' = 'Unique.Hatch.Fish',
                                 'HNC' = 'Unique.HNC.Fish'))) %>%
-    # bind_rows(data.frame(Variable = 'Unique.Fish',
-    #                      scobi_est$Rearing %>% as.data.frame() %>%
-    #                        select(1:3) %>%
-    #                        colSums() %>% as.data.frame() %>% t())) %>%
     rename(SCOBI_est = Estimates,
            SCOBI_lowCI = L,
            SCOBI_uppCI = U)
