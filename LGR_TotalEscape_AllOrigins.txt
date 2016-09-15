@@ -12,8 +12,11 @@ model {
 	X.log.all[1] ~ dunif(0,10) # initial state in log space
 	
 	# for over-dispersed negative binomial
-	r ~ dgamma(0.01, 0.01)
-	k <- 1/r
+# 	r ~ dgamma(0.01, 0.01)
+# 	k <- 1/r
+    theta ~ dgamma(0.01, 0.01)
+	omega ~ dgamma(0.01, 0.01)
+
 			
 	# modeling proportion of fish available for window counts
 	win.prop.avg ~ dbeta(1,1)	# avg daytime ascension rate
@@ -118,8 +121,14 @@ model {
 	for(i in 1:TotLadderWeeks) {
 		# at window: over-dispersed negative binomial
 		# overdispersed if r is small, approximately Poisson if r is very large
-		p[i] <- r / (r + X.day[i])
-		Y.window[i] ~ dnegbin(p[i], r)
+# 		p[i] <- r / (r + X.day[i])
+# 		Y.window[i] ~ dnegbin(p[i], r)
+		
+		# at window: special version of negative binomial
+		# if theta = 0, quasi-Poisson; if omega = 1, negative binomial
+		p[i] <- 1 / (omega + theta * X.day[i])
+		r[i] <- X.day[i] / (omega - 1 + theta * X.day[i])
+		Y.window[i] ~ dnegbin(p[i], r[i])
 		
 		# in trap
 		# uncertainty in trap rate

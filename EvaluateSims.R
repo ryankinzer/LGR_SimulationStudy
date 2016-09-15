@@ -108,6 +108,8 @@ my_ggs = ggs(adult.pass.mod$samples, family = c('acf'))
 my_ggs = ggs(adult.pass.mod$samples, family = c('avg'))
 my_ggs = ggs(adult.pass.mod$samples, family = c('^r$'))
 my_ggs = ggs(adult.pass.mod$samples, family = c('k'))
+my_ggs = ggs(adult.pass.mod$samples, family = c('theta'))
+my_ggs = ggs(adult.pass.mod$samples, family = c('omega'))
 
 ggs_density(my_ggs) +
   facet_wrap(~ Parameter, scales = 'free')
