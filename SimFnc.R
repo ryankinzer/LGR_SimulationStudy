@@ -357,6 +357,10 @@ formatSCOBI_inputs <- function(weekly_obs, LGR_truth){
 }
 
 negbin_theta <- function(mu, error.rate) {
+  
+  # mu = window.passage / window.rate
+  # error.rate = coefficient of variation proportion, ie. 0.05, 0.15
+  
   theta = mu^2 / ((error.rate*mu)^2 - mu) 
 
   return(theta)
