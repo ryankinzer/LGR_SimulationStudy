@@ -54,7 +54,7 @@ SimulateLGRdata = function(N.lgr = 100000,
                   rnorm(n.pops[2], run.sd.mu[2], run.sd.sd[2])))
   
   # Hyper-parameters for population proportions (includes all origins with pop.)
-  pop.p.mu <- rdirichlet(1, alpha = rep(1, sum(n.pops))) 
+  pop.p.mu <- rdirichlet(1, alpha = rep(1, sum(n.pops)))
   
   # True population escapement at Lower Granite Dam (includes all origins)
   N.pop <- rmultinom(1, N.lgr, pop.p.mu)
@@ -207,14 +207,6 @@ SummariseWeekly = function(sim_params,
                 group_by(Week) %>%
                 summarise_each(funs(sum), Night.passage, Day.passage, Window.passage, Fallback, Reascent, Trap, Ladder) %>%
                 ungroup()) %>%
-    # # deal with reascents. Assume all reascensions happen within the same week as initial passage
-    # left_join(org_truth %>%
-    #             filter(Reascent == 1) %>%
-    #             group_by(Week) %>%
-    #             summarise(N_uniq_reasc = n_distinct(id),
-    #                       Day.reascents = rbinom(1, N_uniq_reasc, 1 - night.passage.rate),
-    #                       Night.reascents = N_uniq_reasc - Day.reascents,
-    #                       Window.reascents = rbinom(1, Day.reascents, window.rate))) %>%
     left_join(org_truth %>%
                 filter(Marked == 1,
                        Ladder == 1) %>%
@@ -235,7 +227,8 @@ SummariseWeekly = function(sim_params,
 # Simulate observed values
 SimulateLGRobs = function(sim_params,
                           lgr_truth,
-                          theta = 100,
+                          # theta = 100,
+                          error_rate = 0.05,
                           perfect.window = F) {
   
   window.rate = sim_params$window.rate
@@ -258,10 +251,25 @@ SimulateLGRobs = function(sim_params,
       mutate(win_cnt = round(Window.passage / window.rate))
   }
   
+  # add observation error to daily window counts, then sum by week
   if(!perfect.window) {
+    win_cnt_week = lgr_truth %>%
+      group_by(Day, Week) %>%
+      summarise_each(funs(sum), Window.passage) %>%
+      ungroup() %>%
+      mutate(win_cnt = round(rnorm(nrow(.), mean = Window.passage / window.rate, sd = error_rate * (Window.passage / window.rate))),
+             # prevent counts from being negative
+             win_cnt = ifelse(win_cnt < 0, 0, win_cnt)) %>%
+      group_by(Week) %>%
+      summarise_each(funs(sum), win_cnt)
     lgr_week_obs %<>%
-      mutate(win_cnt = rnegbin(nrow(.), mu = Window.passage / window.rate, theta = theta))  
+      left_join(win_cnt_week)
   }
+  
+  # if(!perfect.window) {
+  #   lgr_week_obs %>%
+  #     mutate(win_cnt = rnegbin(nrow(.), mu = Window.passage / window.rate, theta = theta))
+  # }
   
   # mark-recapture estimate of trap rate
   trap_mr = lgr_truth %>%
