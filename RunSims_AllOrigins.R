@@ -109,7 +109,10 @@ for(i in 1:n_sim) {
   
   # generate weekly observations
   # theta is used to control how much observation error is put on window counts. Higher theta = less error
-  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, theta = 3, perfect.window = T)
+  # lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, theta = 3, perfect.window = T)
+  
+  # error rate is the CV of the daily window counts
+  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, error_rate = 0.15, perfect.window = F)
   
   # filter for spring/summer Chinook dates
   lgr_truth %<>%
