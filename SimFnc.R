@@ -47,7 +47,7 @@ SimulateLGRdata = function(N.lgr = 100000,
   library(tidyr)
   
   # quick clean-up of column names
-  trap.rate.df %>%
+  trap.rate.df %<>%
     rename(trap_open = trap.open)
   
   # R.V. of population mean run-timing given assigned hyper-parameters

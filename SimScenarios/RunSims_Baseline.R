@@ -65,7 +65,8 @@ n_sim = 500
 # set trap rate on weekly basis
 # make it consistent and constant throughout the season
 my_trap_rate = data.frame(Week = 1:52,
-                          trap.rate = 0.15)
+                          trap.rate = 0.15,
+                          trap.open = T)
 
 #-----------------------------------------------------------------
 # run simulations
