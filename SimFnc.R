@@ -41,9 +41,14 @@ SimulateLGRdata = function(N.lgr = 100000,
   
   # required packages to run this function
   library(MCMCpack)
+  library(lubridate)
   library(plyr)
   library(dplyr)
   library(tidyr)
+  
+  # quick clean-up of column names
+  trap.rate.df %>%
+    rename(trap_open = trap.open)
   
   # R.V. of population mean run-timing given assigned hyper-parameters
   pop.mu <- c(rnorm(n.pops[1], run.mu.mu[1], run.mu.sd[1]),
@@ -94,7 +99,7 @@ SimulateLGRdata = function(N.lgr = 100000,
   # create data frame with row for each fish
   LGR.df <- ldply(obs.day,data.frame, .id = 'Population') %>% tbl_df() %>%
     rename(Day = `X..i..`) %>%
-    mutate(Week = ceiling((Day / 365)*52),
+    mutate(Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
            Origin = factor(Origin,levels=c("NOR","HOR","HNC")),
            Run = ifelse(as.integer(gsub('Pop-', '', Population)) <= n.pops[1], 'Spring', 'Summer'),
            Run = factor(Run, levels = c('Spring', 'Summer')),
@@ -115,12 +120,13 @@ SimulateLGRdata = function(N.lgr = 100000,
   LGR.reascents = LGR.df %>%
     filter(Reascent == 1) %>%
     mutate(Day = Day + 1 + rpois(nrow(.), 2),
-           Week = ceiling((Day / 365)*52),
+           Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
            Fallback = rbinom(nrow(.), 1, fallback.rate),
            Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
            Night.passage = rbinom(nrow(.), 1, night.passage.rate),
            Day.passage = 1 - Night.passage,
            Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
+    select(-trap.rate, -trap_open) %>%
     left_join(trap.rate.df) %>%
     mutate(Trap = rbinom(nrow(.), 1, trap.rate),
            Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
@@ -129,12 +135,13 @@ SimulateLGRdata = function(N.lgr = 100000,
   LGR.reascents_2 = LGR.reascents %>%
     filter(Reascent == 1) %>%
     mutate(Day = Day + 1 + rpois(nrow(.), 2),
-           Week = ceiling((Day / 365)*52),
+           Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
            Fallback = rbinom(nrow(.), 1, fallback.rate),
            Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
            Night.passage = rbinom(nrow(.), 1, night.passage.rate),
            Day.passage = 1 - Night.passage,
            Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
+    select(-trap.rate, -trap_open) %>%
     left_join(trap.rate.df) %>%
     mutate(Trap = rbinom(nrow(.), 1, trap.rate),
            Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
@@ -143,12 +150,13 @@ SimulateLGRdata = function(N.lgr = 100000,
   LGR.reascents_3 = LGR.reascents_2 %>%
     filter(Reascent == 1) %>%
     mutate(Day = Day + 1 + rpois(nrow(.), 2),
-           Week = ceiling((Day / 365)*52),
+           Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
            Fallback = rbinom(nrow(.), 1, fallback.rate),
            Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
            Night.passage = rbinom(nrow(.), 1, night.passage.rate),
            Day.passage = 1 - Night.passage,
            Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
+    select(-trap.rate, -trap_open) %>%
     left_join(trap.rate.df) %>%
     mutate(Trap = rbinom(nrow(.), 1, trap.rate),
            Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
@@ -158,7 +166,7 @@ SimulateLGRdata = function(N.lgr = 100000,
     bind_rows(LGR.reascents) %>%
     bind_rows(LGR.reascents_2) %>%
     bind_rows(LGR.reascents_3) %>%
-    mutate(Date = ymd('20150101') + days(Day)) %>%
+    mutate(Date = start.date + days(Day)) %>%
     group_by(Week) %>%
     mutate(Start_Date = min(Date)) %>%
     ungroup() %>%
@@ -243,7 +251,10 @@ SimulateLGRobs = function(sim_params,
   
   lgr_week_obs = lgr_week_org %>%
     group_by(Week) %>%
-    summarise_each(funs(sum), -Origin)
+    summarise_each(funs(sum), -Origin) %>%
+    left_join(lgr_truth %>%
+                select(Week, trap_open) %>%
+                distinct())
   
   # simulate window counts. Add some observation error if !perfect.window
   if(perfect.window) {
@@ -312,8 +323,16 @@ SimulateLGRobs = function(sim_params,
                                         c('NOR' = 'wild_fish',
                                           'HOR' = 'hatch_fish',
                                           'HNC' = 'HNC_fish'))) %>%
-                spread(Origin, n_fish, fill = 0)) %>%
-    mutate_each(funs(ifelse(is.na(.), 0, .)), Ladder:wild_fish) %>%
+                spread(Origin, n_fish, fill = 0))
+  if(!'wild_fish' %in% names(lgr_week_obs)) lgr_week_obs %<>%
+    mutate(hatch_fish = 0)
+  if(!'hatch_fish' %in% names(lgr_week_obs)) lgr_week_obs %<>%
+    mutate(hatch_fish = 0)
+  if(!'HNC_fish' %in% names(lgr_week_obs)) lgr_week_obs %<>%
+    mutate(HNC_fish = 0)
+  
+  lgr_week_obs %<>%
+    mutate_each(funs(ifelse(is.na(.), 0, .)), Ladder:HNC_fish) %>%
     left_join(trap_rate_mr %>%
                 select(Week,
                        trap_rate = p,
@@ -322,7 +341,9 @@ SimulateLGRobs = function(sim_params,
                 mutate(trap_alpha = ((1 - trap_rate) / trap_rate_se^2 - 1 / trap_rate) * trap_rate^2,
                        trap_beta = trap_alpha * (1 / trap_rate - 1))) %>%
     mutate(trap_alpha = ifelse(is.na(trap_rate_se), 1, trap_alpha),
-           trap_beta = ifelse(is.na(trap_rate_se), 1, trap_beta)) %>%
+           trap_beta = ifelse(is.na(trap_rate_se), 1, trap_beta),
+           trap_alpha = ifelse(trap_open, trap_alpha, 1e-12),
+           trap_beta = ifelse(trap_open, trap_beta, 1)) %>%
     select(Week:Window.passage, win_cnt, everything())
   
   return(list('by_origin' = lgr_week_org,

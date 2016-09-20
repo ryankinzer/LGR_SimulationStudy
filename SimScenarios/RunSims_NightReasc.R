@@ -1,5 +1,5 @@
 # Author: Kevin See
-# Purpose: Simulate a number of LGR-like datasets, and estimate escapement using ISEMP model
+# Purpose: Simulate a number of LGR-like datasets, and estimate escapement using ISEMP model and TAC model. Night time passage and re-ascension rates are not equal
 # Created: 8/31/2016
 # Last Modified: 9/12/2016
 # Notes: 
@@ -55,7 +55,7 @@ data.frame(Each.Chain = (mcmc.chainLength - mcmc.burn) / mcmc.thin, All.Chains =
 #-----------------------------------------------------------------
 model.loc = 'LGR_TotalEscape_AllOrigins.txt'
 
-jags.params = c('X.tot.all', 'X.tot.day', 'X.tot.night', 'X.tot.reasc', 'X.tot.new.wild', 'X.tot.new.hatch', 'X.tot.new.hnc', 'X.sigma', 'true.prop', 'win.prop.avg', 'win.prop.true', 'win.prop.sigma', 'reasc.avg', 'reasc.true', 'reasc.sigma', 'acf', 'org.prop', 'org.sigma', 'trap.rate.true', 'r', 'k', 'theta', 'omega')
+jags.params = c('X.tot.all', 'X.tot.day', 'X.tot.night', 'X.tot.reasc', 'X.tot.new.wild', 'X.tot.new.hatch', 'X.tot.new.hnc', 'X.sigma', 'true.prop', 'win.prop.avg', 'win.prop.true', 'win.prop.sigma', 'reasc.avg', 'reasc.true', 'reasc.sigma', 'acf', 'org.prop', 'org.sigma', 'trap.rate.true', 'r', 'k')
 
 # set initial values
 jags.inits = function(){
@@ -65,19 +65,12 @@ jags.inits = function(){
 
 #-----------------------------------------------------------------
 # how mnay simulations to do?
-n_sim = 10
+n_sim = 500
 
 # set trap rate on weekly basis
+# make it consistent and constant throughout the season
 my_trap_rate = data.frame(Week = 1:52,
                           trap.rate = 0.15)
-
-# # change trap rate part-way through season
-# my_trap_rate %<>%
-#   mutate(trap.rate = ifelse(Week > 20, 0.15, trap.rate))
-# 
-# # shut trap down for a few weeks
-# my_trap_rate %<>%
-#   mutate(trap.rate = ifelse(Week %in% 22:24, 0, trap.rate))
 
 #-----------------------------------------------------------------
 # run simulations
@@ -95,24 +88,16 @@ while(i <= n_sim) {
   cat(paste('Starting simulation #', i, '\n'))
   
   # simulate data
-  my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate)
-  
-  # my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate,
-  #                          fallback.rate = 0.12,
-  #                          reascension.rate = 1,
-  #                          night.passage.rate = 0.05,
-  #                          marked.rate = 0.07,
-  #                          ladder.det = 0.99)
+  my_sim = SimulateLGRdata(trap.rate.df = my_trap_rate,
+                           fallback.rate = 0.1,
+                           night.passage.rate = 0.05)
   
   # pull out data from simulation
   lgr_truth = my_sim$sim
   
   # generate weekly observations
-  # theta is used to control how much observation error is put on window counts. Higher theta = less error
-  # lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, theta = 3, perfect.window = T)
-  
   # error rate is the CV of the daily window counts
-  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, error_rate = 0.15, perfect.window = F)
+  lgr_week = SimulateLGRobs(my_sim$parameters, lgr_truth, error_rate = 0.05, perfect.window = T)
   
   # filter for spring/summer Chinook dates
   lgr_truth %<>%
@@ -217,27 +202,19 @@ while(i <= n_sim) {
                           alph = 0.05, 
                           B = 1000, 
                           writeOutput = FALSE))
-
+  
   if(class(scobi_est) == 'try-error') next
-  # if(class(scobi_est) == 'try-error') {
-  #   scobi_summ = data.frame(Variable = c('Unique.Wild.Fish',
-  #                                        'Unique.Hatch.Fish',
-  #                                        'Unique.HNC.Fish'),
-  #                           SCOBI_est = NA,
-  #                           SCOBI_lowCI = NA,
-  #                           SCOBI_uppCI = NA)
-  # } else {
-    scobi_summ = scobi_est$Rearing %>% as.data.frame() %>%
-      mutate(RearType = rownames(scobi_est$Rearing)) %>%
-      select(Variable = RearType, Estimates:U) %>% tbl_df() %>%
-      mutate(Variable = revalue(Variable,
-                                c('W' = 'Unique.Wild.Fish',
-                                  'H' = 'Unique.Hatch.Fish',
-                                  'HNC' = 'Unique.HNC.Fish'))) %>%
-      rename(SCOBI_est = Estimates,
-             SCOBI_lowCI = L,
-             SCOBI_uppCI = U)
-  # }
+  
+  scobi_summ = scobi_est$Rearing %>% as.data.frame() %>%
+    mutate(RearType = rownames(scobi_est$Rearing)) %>%
+    select(Variable = RearType, Estimates:U) %>% tbl_df() %>%
+    mutate(Variable = revalue(Variable,
+                              c('W' = 'Unique.Wild.Fish',
+                                'H' = 'Unique.Hatch.Fish',
+                                'HNC' = 'Unique.HNC.Fish'))) %>%
+    rename(SCOBI_est = Estimates,
+           SCOBI_lowCI = L,
+           SCOBI_uppCI = U)
   
   # compare with "truth" from simulated data
   true_var = lgr_truth %>%
@@ -278,105 +255,4 @@ while(i <= n_sim) {
 cat(paste('Took', round(c(proc.time() - tot_ptm)[3] / 60, 2), 'min to run all', n_sim, 'sims in total. \n'))
 
 # save results
-# save(res, sim_list, obs_list, mod_list, file = 'SimulationFits/SimResults.rda')
-
-#-----------------------------------------------------------------
-# Examine results
-#-----------------------------------------------------------------
-res_df = ldply(res, .id = 'sim') %>% tbl_df
-
-res_df %>%
-  group_by(Variable) %>%
-  summarise(ISEMP_cover95 = sum(ISEMP_inCI, na.rm = T) / n(),
-            SCOBI_cover95 = sum(SCOBI_inCI, na.rm = T) / sum(!is.na(SCOBI_est)))
-
-qplot(Truth, SCOBI_est, data = res_df, color = Variable, log = 'xy') + 
-  geom_abline()
-
-qplot(Truth, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
-  geom_abline()
-
-qplot(SCOBI_est, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
-  geom_abline()
-
-
-res_df %>%
-  select(sim:ISEMP_est, SCOBI_est) %>%
-  gather(source, est, -(sim:Truth)) %>%
-  mutate(source = gsub('_est$', '', source)) %>%
-  mutate(bias = est - Truth,
-         rel_bias = bias / Truth) %>%
-  ggplot(aes(x = Variable,
-             fill = Variable,
-             y = bias)) +
-  geom_boxplot() +
-  scale_fill_brewer(palette = 'Set3') +
-  geom_hline(yintercept = 0,
-             linetype = 2) +
-  facet_wrap(~ source, scales = 'free_x') +
-  theme(axis.text.x = element_blank())
-  # theme(axis.text.x = element_text(angle = 90))
-
-res_df %>%
-  filter(grepl('^Unique', Variable)) %>%
-  mutate(bias = SCOBI_est - Truth,
-         low_bias = SCOBI_lowCI - Truth,
-         upp_bias = SCOBI_uppCI - Truth) %>%
-  ggplot(aes(x = sim,
-             y = bias,
-             color = Variable)) +
-  geom_errorbar(aes(ymin = low_bias,
-                    ymax = upp_bias)) +
-  geom_point() +
-  geom_hline(yintercept = 0,
-             linetype = 2) +
-  facet_wrap(~ Variable, scales ='free')
-
-#------------------------------------------------------
-# Re-format res_df into long format of point ests.,
-# CI's and CIin for both Models : ISEMP, SCOBI
-#------------------------------------------------------
-res_long_df <- res_df %>%
-  gather(key, point, -sim, -Truth, -Variable) %>%
-  separate(key, into = c("Model","est"), sep = "_") %>%
-  spread(est,point) %>%
-  mutate(bias = est - Truth,
-         rel_bias = bias / Truth,
-         inCI = ifelse(inCI == 1, T, ifelse(inCI == 0, F, NA)))
-
-pd = .4
-
-res_long_df %>%
-  filter(grepl('^Unique', Variable)) %>%
-  mutate(low_bias = lowCI - Truth,
-         upp_bias = uppCI - Truth) %>%
-  ggplot(aes(x = sim,
-             y = bias,
-             color = Model,
-             shape = inCI)) +
-  scale_shape_manual(values = c('TRUE' = 19,
-                                'FALSE' = 1)) +
-  geom_errorbar(aes(ymin = low_bias,
-                    ymax = upp_bias),
-                position = position_dodge(width = pd)) +
-  geom_point(position = position_dodge(width = pd)) +
-  geom_hline(yintercept = 0,
-             linetype = 2) +
-  facet_wrap(~Variable, scales = 'free') +
-  scale_color_brewer(palette = 'Set1')
-
-
-res_long_df %>%
-  mutate(low_bias = lowCI - Truth,
-         upp_bias = uppCI - Truth) %>%
-  ggplot(aes(x = sim,
-             y = bias,
-             color = Model)) +
-  geom_errorbar(aes(ymin = low_bias,
-                    ymax = upp_bias),
-                position = position_dodge(width = pd)) +
-  geom_point(position = position_dodge(width = pd)) +
-  geom_hline(yintercept = 0,
-             linetype = 2) +
-  facet_wrap(~Variable, scales = 'free') +
-  scale_color_brewer(palette = 'Set1')
+save(res, sim_list, obs_list, mod_list, file = 'SimulationFits/Sim_NightReasc.rda')
