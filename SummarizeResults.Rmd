@@ -1,0 +1,220 @@
+---
+title: "LGR Simulation Studies"
+author: "Kevin See"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output:
+  html_document:
+    fig_caption: yes
+    fig_height: 8
+    fig_width: 8
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    collapsed: yes
+    smooth_scroll: yes
+  pdf_document:
+    fig_caption: yes
+    fig_height: 7
+    fig_width: 7
+csl: /Users/kevin/Documents/Bibliography/StyleFiles/ecology.csl
+bibliography:
+- /Users/kevin/Documents/Bibliography/Research.bib
+- /Users/kevin/Documents/Bibliography/SoftwareCitations.bib
+---
+
+```{r intro_prep, message=F, warning=F, results='hide', echo = F}
+library(knitr)
+library(captioner)
+library(pander)
+opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+panderOptions('big.mark', ',') # to use , in large numbers in tables
+panderOptions('table.split.table', Inf) # so as to not break table onto new lines
+
+tab_nums = captioner(prefix = 'Table')
+fig_nums = captioner()
+
+library(lubridate)
+library(magrittr)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(jagsUI)
+
+theme_set(theme_bw())
+```
+
+```{r load_results, cache = T}
+result_nms = list.files('SimulationFits')
+result_nms = result_nms[!grepl('other', result_nms)]
+scenario_nms = gsub('^Sim_', '', result_nms)
+scenario_nms = gsub('\\.rda$', '', scenario_nms)
+# length(scenario_nms)
+scenario_nms = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F))
+
+res_list = vector('list', length(scenario_nms))
+names(res_list) = scenario_nms
+for(i in 1:length(res_list)) {
+  load(paste0('SimulationFits/', result_nms[i]))
+  res_list[[i]] = res
+  rm(res)
+}
+
+# pull all results into a data.frame
+res_df = ldply(res_list,
+               .id = 'Scenario',
+               .fun = function(x) {
+                 ldply(x,
+                       .id = 'sim')
+               }) %>% tbl_df() %>%
+  mutate(Variable = factor(Variable, levels = c('Unique.Wild.Fish',
+                                                'Unique.Hatch.Fish',
+                                                'Unique.HNC.Fish',
+                                                'All.Fish',
+                                                'Daytime.Fish',
+                                                'Night.Fish',
+                                                'Reascent.Fish')))
+rm(res_list)
+
+#------------------------------------------------------
+# Re-format res_df into long format of point ests.,
+# CI's and CIin for both Models : ISEMP, SCOBI
+#------------------------------------------------------
+res_long_df <- res_df %>%
+  select(Scenario, sim) %>%
+  distinct() %>%
+  ungroup() %>%
+  left_join(res_df) %>%
+  mutate(Scenario = factor(Scenario, levels = scenario_nms)) %>%
+  gather(key, point, -Scenario, -sim, -Truth, -Variable) %>%
+  separate(key, into = c("Model","est"), sep = "_") %>%
+  spread(est,point) %>%
+  mutate(cv = (uppCI - lowCI) / (2 * qnorm(0.975)) / est,
+         bias = est - Truth,
+         rel_bias = bias / Truth,
+         inCI = ifelse(inCI == 1, T, ifelse(inCI == 0, F, NA)))
+```
+
+```{r bias_plots}
+abs_bias_p = res_long_df %>%
+  ggplot(aes(x = Model,
+             fill = Variable,
+             y = bias)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = 'Set1') +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_wrap(~ Scenario, scales = 'free') +
+  labs(y = 'Bias')
+
+rel_bias_p = res_long_df %>%
+  ggplot(aes(x = Model,
+             fill = Variable,
+             y = rel_bias)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = 'Set1') +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_wrap(~ Scenario, scales = 'free') +
+  labs(y = 'Relative Bias') +
+  coord_cartesian(ylim = c(-0.5, 0.5))
+```
+
+# Bias Plots
+
+```{r abs_bias_fig}
+print(abs_bias_p)
+```
+
+```{r rel_bias_fig}
+print(rel_bias_p)
+```
+
+# Tables
+
+```{r coverage_tab}
+res_long_df %>%
+  filter(grepl('Unique', Variable)) %>%
+  group_by(Scenario, Variable, Model) %>%
+  summarise(median_Truth = median(Truth),
+            covarage = sum(inCI) / n(),
+            CIwidth = median(uppCI - lowCI),
+            median_CV = median(cv),
+            Bias = median(bias),
+            Rel_Bias = median(rel_bias))# %>%
+  # pander(emphasize.strong.rows = c(8,10,12))
+```
+
+# Coverage Plots
+
+```{r coverage_fig}
+samp_sims = sample(unique(res_df$sim), 25)
+
+pd = .4
+
+res_long_df %>%
+  filter(sim %in% samp_sims) %>%
+  filter(grepl('^Unique', Variable)) %>%
+  mutate(low_bias = lowCI - Truth,
+         upp_bias = uppCI - Truth) %>%
+  ggplot(aes(x = sim,
+             y = bias,
+             color = Model,
+             shape = inCI)) +
+  scale_shape_manual(values = c('TRUE' = 19,
+                                'FALSE' = 1)) +
+  geom_errorbar(aes(ymin = low_bias,
+                    ymax = upp_bias),
+                position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_grid(Variable ~ Scenario, scales = 'free_y') +
+  scale_color_brewer(palette = 'Set1') +
+  theme(axis.text.x = element_blank()) +
+  labs(x = 'Simulation',
+       y = 'Bias',
+       shape = 'In Conf. Int.',
+       title = paste('Sample of', length(samp_sims), 'Simulations'))
+```
+
+# Night Passage $!=$ Reascension
+
+The SCOBI model exhibits some bias when re-ascension and night-time passage rates are not equal. By adding the the total estimates for wild, hatchery and HNC fish, we can calculated an overall realized bias by substracting that from the underlying true number of individual fish that crossed LGR in the simulation. We can also calculate the true number of re-ascending fish and subtract the true number of fish that crossed during the night. This difference explains the bias in the SCOBI estimates very well.
+
+```{r night_reasc_bias}
+bias_df = res_df %>%
+  filter(Scenario == 'NightReasc',
+         Variable %in% c('Night.Fish', 'Reascent.Fish')) %>%
+  select(Scenario, sim, Variable, Truth) %>%
+  spread(Variable, Truth) %>%
+  mutate(pot_bias = Reascent.Fish - Night.Fish) %>%
+  left_join(res_df %>%
+              filter(Scenario == 'NightReasc',
+                     grepl('Unique', Variable)) %>%
+              group_by(Scenario, sim) %>%
+              summarise(Uni.Fish.Truth = sum(Truth),
+                        Tot.Fish.SCOBI = sum(SCOBI_est)) %>%
+              mutate(bias = Tot.Fish.SCOBI - Uni.Fish.Truth))
+
+mod = lm(bias ~ pot_bias, data = bias_df)
+
+bias_p = ggplot(aes(pot_bias, 
+                    bias), 
+                data = bias_df) +
+  geom_point() +
+  geom_abline(color = 'red',
+              linetype = 2) +
+  geom_smooth(method = lm) +
+    labs(x = 'Reascent - Night',
+       y = 'Total Bias') +
+  geom_text(data = data.frame(Coef = coef(mod)),
+            aes(x = -Inf, 
+                y = Inf,
+                label = paste0('y = ', round(Coef[1], 2), ' + ', round(Coef[2], 2), 'x')),
+            hjust = -0.5,
+            vjust = 3)
+
+print(bias_p)
+```
