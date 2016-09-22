@@ -4,7 +4,9 @@
 .Ruserdata
 Old
 Document
-SimulationFits
+SimulationFits/Sim_Baseline_other.rda
+SimulationFits/Sim_NightReasc_other.rda
+Outgoing
 SummarizeResults.html
 SummarizeResults_cache
 SummarizeResults_files
