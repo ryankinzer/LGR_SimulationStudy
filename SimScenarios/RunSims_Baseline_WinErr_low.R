@@ -242,9 +242,9 @@ while(i <= n_sim) {
     mutate(ISEMP_inCI = ifelse(Truth >= ISEMP_lowCI & Truth <= ISEMP_uppCI, T, F),
            SCOBI_inCI = ifelse(Truth >= SCOBI_lowCI & Truth <= SCOBI_uppCI, T, F))
   
-  sim_list[[i]] = my_sim
-  obs_list[[i]] = lgr_week
-  mod_list[[i]] = adult.pass.mod
+  # sim_list[[i]] = my_sim
+  # obs_list[[i]] = lgr_week
+  # mod_list[[i]] = adult.pass.mod
   
   rm(my_sim, lgr_truth, lgr_week, jags.data, adult.pass.mod, true_var, tot_summ, tot_post, scobi_dat, scobi_est, scobi_summ)
   
@@ -254,4 +254,5 @@ while(i <= n_sim) {
 cat(paste('Took', round(c(proc.time() - tot_ptm)[3] / 60, 2), 'min to run all', n_sim, 'sims in total. \n'))
 
 # save results
-save(res, sim_list, obs_list, mod_list, file = 'SimulationFits/Sim_Baseline_WinErr_low.rda')
+save(res, file = 'SimulationFits/Sim_Baseline_WinErr_low.rda')
+# save(sim_list, obs_list, mod_list, file = 'SimulationFits/Sim_Baseline_WinErr_low_other.rda')

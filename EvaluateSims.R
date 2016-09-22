@@ -1,15 +1,13 @@
 # Author: Kevin See
-# Purpose: Make tables and plots based on simulated LGR data and ISEMP model estimates
+# Purpose: Make tables and plots based on simulated LGR data and ISEMP and TAC model estimates
 # Created: 9/2/2016
-# Last Modified: 9/2/2016
+# Last Modified: 9/20/2016
 # Notes: 
 
 #-----------------------------------------------------------------
-library(MCMCpack)
-library(FSA)
-library(Rcapture)
-library(boot)
-library(msm)
+# library(MCMCpack)
+# library(boot)
+# library(msm)
 library(lubridate)
 library(magrittr)
 library(plyr)
@@ -19,74 +17,190 @@ library(ggplot2)
 library(jagsUI)
 
 theme_set(theme_bw())
-setwd('IDFG_Comparison/SimulationStudy')
 
 #-----------------------------------------------------------------
 # load results
-load('SimulationFits/SimResults.rda')
+result_nms = list.files('SimulationFits')
+result_nms = result_nms[!grepl('other', result_nms)]
+scenario_nms = gsub('^Sim_', '', result_nms)
+scenario_nms = gsub('\\.rda$', '', scenario_nms)
+length(scenario_nms)
+
+res_list = vector('list', length(scenario_nms))
+names(res_list) = scenario_nms
+for(i in 1:length(res_list)) {
+  load(paste0('SimulationFits/', result_nms[i]))
+  res_list[[i]] = res
+  rm(res)
+}
+
+# pull all results into a data.frame
+res_df = ldply(res_list,
+               .id = 'Scenario',
+               .fun = function(x) {
+                 ldply(x,
+                       .id = 'sim')
+               }) %>% tbl_df()
+rm(res_list)
 
 #-----------------------------------------------------------------
-# Examine results
+# summarise and plot results
 #-----------------------------------------------------------------
-res_df = ldply(res, .id = 'sim') %>% tbl_df
-
 res_df %>%
-  group_by(Variable) %>%
-  summarise(coverage95 = sum(inCI) / n())
+  filter(grepl('Unique', Variable)) %>%
+  group_by(Scenario, Variable) %>%
+  summarise(median_Truth = median(Truth),
+            ISEMP_cover95 = sum(ISEMP_inCI) / n(),
+            SCOBI_cover95 = sum(SCOBI_inCI) / n(),
+            ISEMP_CIwidth = median(ISEMP_uppCI - ISEMP_lowCI),
+            SCOBI_CIwidth = median(SCOBI_uppCI - SCOBI_lowCI),
+            ISEMP_cv = mean((ISEMP_uppCI - ISEMP_lowCI) / (2 * qnorm(0.975)) / ISEMP_est),
+            SCOBI_cv = mean((SCOBI_uppCI - SCOBI_lowCI) / (2 * qnorm(0.975)) / SCOBI_est))
 
-qplot(Truth, median, data = res_df, color = Variable, log = 'xy') + 
+qplot(Truth, SCOBI_est, data = res_df, color = Variable, log = 'xy') + 
+  geom_abline() +
+  facet_wrap(~ Scenario)
+
+qplot(Truth, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
   geom_abline()
 
+qplot(SCOBI_est, ISEMP_est, data = res_df, color = Variable, log = 'xy') + 
+  geom_abline()
+
+
 res_df %>%
-  mutate(bias = median - Truth,
+  select(Scenario:ISEMP_est, SCOBI_est) %>%
+  gather(source, est, -(Scenario:Truth)) %>%
+  mutate(source = gsub('_est$', '', source)) %>%
+  mutate(bias = est - Truth,
          rel_bias = bias / Truth) %>%
   ggplot(aes(x = Variable,
              fill = Variable,
              y = bias)) +
   geom_boxplot() +
+  scale_fill_brewer(palette = 'Set1') +
   geom_hline(yintercept = 0,
-             linetype = 2)
-
+             linetype = 2) +
+  facet_grid(Scenario ~ source, scales = 'free') +
+  labs(y = 'Bias') +
+  theme(axis.text.x = element_blank()) 
 
 #-----------------------------------------------------------------
-# Are window counts biased somehow?
+# is poor coverage and bias of SCOBI due to night and reascension fish?
 #-----------------------------------------------------------------
-win_cnt_df = ldply(obs_list,
-                   .id = 'sim',
-                   .fun = function(x) {
-                     x$obs %>%
-                       select(Week, 
-                              Start_Date, 
-                              True = Day.passage, 
-                              Obs = win_cnt)
-                   }) %>% tbl_df() %>%
-  mutate(bias = Obs - True,
-         rel_bias = bias / True)
+bias_df = res_df %>%
+  filter(Scenario == 'NightReasc',
+         Variable %in% c('Night.Fish', 'Reascent.Fish')) %>%
+  select(Scenario, sim, Variable, Truth) %>%
+  spread(Variable, Truth) %>%
+  mutate(pot_bias = Reascent.Fish - Night.Fish) %>%
+  left_join(res_df %>%
+              filter(Scenario == 'NightReasc',
+                     grepl('Unique', Variable)) %>%
+              group_by(Scenario, sim) %>%
+              summarise(Uni.Fish.Truth = sum(Truth),
+                        Tot.Fish.SCOBI = sum(SCOBI_est)) %>%
+              mutate(bias = Tot.Fish.SCOBI - Uni.Fish.Truth))
 
-win_cnt_df %>%
-  ggplot(aes(x = True,
-             y = Obs)) +
-  geom_point() +
+qplot(pot_bias, bias, data = bias_df,
+      xlab = 'Reascent - Night',
+      ylab = 'Realized Bias') +
   geom_abline(color = 'red',
               linetype = 2) +
   geom_smooth(method = lm)
 
-win_cnt_df %>%
-  ggplot(aes(x = True,
-             y = rel_bias)) +
-  geom_point(aes(color = as.factor(sim))) +
-  geom_hline(yintercept = 0,
-             color = 'red',
-             linetype = 2) +
-  geom_smooth()
+mod = lm(bias ~ pot_bias, data = bias_df)
+summary(mod)
+op = par(mfrow = c(2,2))
+plot(mod)
+par(op)
 
-ggplot(win_cnt_df,
-       aes(x = sim,
-           y = rel_bias)) +
-  geom_boxplot(fill = 'lightgray') +
+
+#------------------------------------------------------
+# Re-format res_df into long format of point ests.,
+# CI's and CIin for both Models : ISEMP, SCOBI
+#------------------------------------------------------
+res_long_df <- res_df %>%
+  select(Scenario, sim) %>%
+  distinct() %>%
+  ungroup() %>%
+  left_join(res_df) %>%
+  gather(key, point, -Scenario, -sim, -Truth, -Variable) %>%
+  separate(key, into = c("Model","est"), sep = "_") %>%
+  spread(est,point) %>%
+  mutate(cv = (uppCI - lowCI) / (2 * qnorm(0.975)) / est,
+         bias = est - Truth,
+         rel_bias = bias / Truth,
+         inCI = ifelse(inCI == 1, T, ifelse(inCI == 0, F, NA)))
+
+res_long_df %>%
+  filter(grepl('Unique', Variable)) %>%
+  group_by(Scenario, Variable, Model) %>%
+  summarise(median_Truth = median(Truth),
+            cover95 = sum(inCI) / n(),
+            CIwidth = median(uppCI - lowCI),
+            median_cv = median(cv),
+            rel_bias = median(rel_bias))
+
+res_long_df %>%
+  ggplot(aes(x = Model,
+             fill = Variable,
+             y = rel_bias)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = 'Set1') +
   geom_hline(yintercept = 0,
-             color = 'red',
-             linetype = 2)
+             linetype = 2) +
+  facet_wrap(~ Scenario, scales = 'free') +
+  labs(y = 'Bias') +
+  coord_cartesian(ylim = c(-0.5, 0.5))
+
+
+
+
+pd = .4
+
+res_long_df %>%
+  group_by(Scenario) %>%
+  sample_n(25) %>%
+  filter(grepl('^Unique', Variable)) %>%
+  mutate(low_bias = lowCI - Truth,
+         upp_bias = uppCI - Truth) %>%
+  ggplot(aes(x = sim,
+             y = bias,
+             color = Model,
+             shape = inCI)) +
+  scale_shape_manual(values = c('TRUE' = 19,
+                                'FALSE' = 1)) +
+  geom_errorbar(aes(ymin = low_bias,
+                    ymax = upp_bias),
+                position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_wrap(~Scenario + Variable, scales = 'free') +
+  scale_color_brewer(palette = 'Set1')
+
+
+res_long_df %>%
+  group_by(Scenario) %>%
+  sample_n(25) %>%
+  mutate(low_bias = lowCI - Truth,
+         upp_bias = uppCI - Truth) %>%
+  ggplot(aes(x = sim,
+             y = bias,
+             color = Model,
+             shape = inCI)) +
+  scale_shape_manual(values = c('TRUE' = 19,
+                                'FALSE' = 1)) +
+  geom_errorbar(aes(ymin = low_bias,
+                    ymax = upp_bias),
+                position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  geom_hline(yintercept = 0,
+             linetype = 2) +
+  facet_grid(Variable ~ Scenario, scales = 'free') +
+  theme(axis.text.x = element_blank()) +
+  scale_color_brewer(palette = 'Set1')
 
 
 
