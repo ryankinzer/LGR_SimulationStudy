@@ -1,0 +1,84 @@
+model{
+
+# This model requires:
+# n.fish - number of valid tags being used in this model
+# n.pops.main - number of initial branches after leaving LGD + 1 (26)
+# n.weeks - number of weeks in model
+# obs.mat - matrix with a row for each fish and a column for each detection site, 1 = seen, 0 = not seen
+
+#######################################################
+# Process model - which branch does each fish follow? #
+#######################################################
+# 10 bins: 9 populations and a black box
+
+# set probability to any main bin that saw NO fish to 0
+# prior on log odds ratio for initial week
+for(j in 1:(n.pops.main - 1)) {
+  # somewhat informative, but fairly vague prior
+  phi[1,j] ~ dnorm(-2, 1/16)
+  exp_phi[1,j] <- exp(phi[1,j]) * main_dirch_vec[j]
+}
+    
+# set black box as baseline
+for(t in 1:(n.weeks)) {
+  phi[t,n.pops.main] <- 0
+  exp_phi[t, n.pops.main] <- exp(phi[t, n.pops.main]) * main_dirch_vec[n.pops.main]
+  # get sum of all phi's
+  sum_exp_phi[t] <- sum(exp_phi[t,]);
+}
+    
+# extract initial movement probabilities for week 1
+for(j in 1:n.pops.main) {
+  main_p[1,j] <- ifelse(main_dirch_vec[j] == 0, 0, exp_phi[1,j] / sum_exp_phi[1])
+}
+    
+# variation in time-varying random walk movement probabilities
+sigma_rw ~ dunif(0,10) 
+tau_rw <- pow(sigma_rw, -2)
+    
+for(t in 2:(n.weeks)) {
+  for(j in 1:(n.pops.main - 1)) {
+    epsilon[t,j] ~ dnorm(0, tau_rw)
+    # set phi to any main bin that saw NO fish to 0
+    phi[t,j] <- ifelse(main_dirch_vec[j] == 0, 0, phi[t - 1, j] + epsilon[t,j])
+    exp_phi[t,j] <- exp(phi[t,j]) * main_dirch_vec[j]
+  }
+    
+  for (j in 1:(n.pops.main)) {
+    main_p[t,j] <- (exp_phi[t,j] / sum_exp_phi[t]) 
+  }
+}
+    
+# Which main branch does each fish follow?
+for(i in 1:n.fish) {
+  a[i] ~ dcat( main_p[lgr_week[i], 1:n.pops.main] )
+}
+
+# expand the dcat variable into a matrix of zeros and ones
+for (i in 1:n.fish) {
+  for (j in 1:n.pops.main) {
+    catexp[i,j] <- equals(a[i],j) #equals(x,y) is a test for equality, returns [1,0]
+  }
+}
+
+
+################################################
+# Observation model - where are fish detected? #
+################################################
+
+# Priors for detection probabilities
+for(j in 1:18) {
+  det_p[j] ~ dbeta(1,1)
+}
+
+for (i in 1:n.fish) {
+  # one loop for each branch, since all have identical detection structure
+  for(j in 1:9) {
+	# first array
+    obs.mat[i,(j*2)-1] ~ dbern( det_p[(j*2)-1] * catexp[i,j] )
+    # second array
+    obs.mat[i,j*2] ~ dbern( det_p[(j*2)] * catexp[i,j] )
+  }
+}
+
+}
