@@ -26,7 +26,7 @@ library(jagsUI)
 
 theme_set(theme_bw())
 
-setwd('LGR_SimulationStudy')
+#setwd('LGR_SimulationStudy')
 
 # this contains the function to simulate data
 source('SimFnc.R')
