@@ -51,10 +51,11 @@ result_nms = result_nms[!grepl('other', result_nms)]
 scenario_nms = gsub('^Sim_', '', result_nms)
 scenario_nms = gsub('\\.rda$', '', scenario_nms)
 # length(scenario_nms)
-scenario_nms = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F))
-
 res_list = vector('list', length(scenario_nms))
 names(res_list) = scenario_nms
+
+# scenario_nms = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F))
+
 for(i in 1:length(res_list)) {
   load(paste0('SimulationFits/', result_nms[i]))
   res_list[[i]] = res
@@ -86,13 +87,17 @@ res_long_df <- res_df %>%
   distinct() %>%
   ungroup() %>%
   left_join(res_df) %>%
-  mutate(Scenario = factor(Scenario, levels = scenario_nms)) %>%
+  mutate(Scenario = factor(Scenario, levels = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), 
+                                                sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), 
+                                                sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F)))) %>%
   gather(key, point, -Scenario, -sim, -Truth, -Variable) %>%
   separate(key, into = c("Model","est"), sep = "_") %>%
   spread(est,point) %>%
-  mutate(cv = (uppCI - lowCI) / (2 * qnorm(0.975)) / est,
+  mutate(se = (uppCI - lowCI) / (2 * qnorm(0.975)),
+         cv = se / est,
          bias = est - Truth,
          rel_bias = bias / Truth,
+         MSE = se^2 + bias^2,
          inCI = ifelse(inCI == 1, T, ifelse(inCI == 0, F, NA)))
 ```
 
@@ -134,16 +139,29 @@ print(rel_bias_p)
 # Tables
 
 ```{r coverage_tab}
-res_long_df %>%
+cover_tab = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
   group_by(Scenario, Variable, Model) %>%
   summarise(median_Truth = median(Truth),
-            covarage = sum(inCI) / n(),
+            coverage = sum(inCI) / n(),
             CIwidth = median(uppCI - lowCI),
-            median_CV = median(cv),
-            Bias = median(bias),
-            Rel_Bias = median(rel_bias))# %>%
-  # pander(emphasize.strong.rows = c(8,10,12))
+            median_CV = median(cv))
+
+cover_tab %>%
+  pander(emphasize.strong.rows = which(round(cover_tab$coverage, 2) < 0.95))
+```
+
+```{r bias_tab}
+bias_tab = res_long_df %>%
+  filter(grepl('Unique', Variable)) %>%
+  group_by(Scenario, Variable, Model) %>%
+  summarise(Bias = median(bias),
+            Rel_Bias = median(rel_bias),
+            SE = median(se),
+            RMSE = sqrt(median(MSE)))
+
+bias_tab %>%
+  pander(emphasize.strong.rows = with(bias_tab, which(abs(Rel_Bias) > 0.05)))
 ```
 
 # Coverage Plots
