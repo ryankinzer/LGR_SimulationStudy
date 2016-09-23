@@ -141,27 +141,55 @@ print(rel_bias_p)
 ```{r coverage_tab}
 cover_tab = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
   group_by(Scenario, Variable, Model) %>%
   summarise(median_Truth = median(Truth),
-            coverage = sum(inCI) / n(),
-            CIwidth = median(uppCI - lowCI),
-            median_CV = median(cv))
+            coverage = sum(inCI) / n()) %>%
+  ungroup() %>%
+  spread(Model, coverage)
+
+# which have coverage < 90% ?
+if(length(which(round(cover_tab$ISEMP, 2) < 0.9)) > 0) {
+  cover_mat = data.frame(row = which(round(cover_tab$ISEMP, 2) < 0.9),
+                         col = which(names(cover_tab) == 'ISEMP'))
+} else {
+  cover_mat = data.frame(row = NA,
+                         col = which(names(cover_tab) == 'ISEMP'))
+}
+
+cover_mat %<>%
+  bind_rows(data.frame(row = which(round(cover_tab$SCOBI, 2) < 0.9),
+                       col = which(names(cover_tab) == 'SCOBI'))) %>%
+  filter(!is.na(row))
+cover_mat %<>%
+  bind_rows(cover_mat %>%
+              mutate(col = 1))
+
 
 cover_tab %>%
-  pander(emphasize.strong.rows = which(round(cover_tab$coverage, 2) < 0.95))
+  pander(emphasize.strong.cells = as.matrix(cover_mat))
+
 ```
 
 ```{r bias_tab}
 bias_tab = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
   group_by(Scenario, Variable, Model) %>%
-  summarise(Bias = median(bias),
+  summarise(Avg_Truth = round(median(Truth)),
+            Bias = median(bias),
             Rel_Bias = median(rel_bias),
             SE = median(se),
-            RMSE = sqrt(median(MSE)))
+            RMSE = sqrt(SE^2 + Bias^2))
 
 bias_tab %>%
-  pander(emphasize.strong.rows = with(bias_tab, which(abs(Rel_Bias) > 0.05)))
+  pander(emphasize.strong.rows = with(bias_tab, which(abs(RMSE - SE) > 10)))
 ```
 
 # Coverage Plots
@@ -174,25 +202,29 @@ pd = .4
 res_long_df %>%
   filter(sim %in% samp_sims) %>%
   filter(grepl('^Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
   mutate(low_bias = lowCI - Truth,
          upp_bias = uppCI - Truth) %>%
-  ggplot(aes(x = sim,
-             y = bias,
+  ggplot(aes(y = sim,
+             x = bias,
              color = Model,
              shape = inCI)) +
   scale_shape_manual(values = c('TRUE' = 19,
                                 'FALSE' = 1)) +
-  geom_errorbar(aes(ymin = low_bias,
-                    ymax = upp_bias),
-                position = position_dodge(width = pd)) +
+  geom_errorbarh(aes(xmin = low_bias,
+                     xmax = upp_bias),
+                 position = position_dodge(width = pd)) +
   geom_point(position = position_dodge(width = pd)) +
-  geom_hline(yintercept = 0,
+  geom_vline(xintercept = 0,
              linetype = 2) +
-  facet_grid(Variable ~ Scenario, scales = 'free_y') +
+  facet_grid(Scenario ~ Variable, scales = 'free_x') +
   scale_color_brewer(palette = 'Set1') +
-  theme(axis.text.x = element_blank()) +
-  labs(x = 'Simulation',
-       y = 'Bias',
+  theme(axis.text.y = element_blank()) +
+  labs(y = 'Simulation',
+       x = 'Bias',
        shape = 'In Conf. Int.',
        title = paste('Sample of', length(samp_sims), 'Simulations'))
 ```
