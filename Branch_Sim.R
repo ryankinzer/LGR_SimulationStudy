@@ -3,21 +3,10 @@
 #------------------------------------------------------------------------------
 # Ryan N. Kinzer
 # Created: 9/23/2016
-# Modified: 9/23/2016
+# Modified: 9/26/2016
 #------------------------------------------------------------------------------
 
-library(MCMCpack)
-library(FSA)
-library(Rcapture)
-library(boot)
-library(msm)
-library(lubridate)
 library(magrittr)
-library(plyr)
-library(dplyr)
-library(tidyr)
-library(jagsUI)
-library(ggplot2)
 
 #source("./Script/lgd_run_timing.R") # generates the run timing parameters
 # shown below.
@@ -36,32 +25,75 @@ library(ggplot2)
 #<chr> <int>    <dbl>    <dbl>    <dbl>    <dbl>
 #1 Chinook   149 160.8827 21.98749 17.52383 7.999656
 
-source("SimFnc.R") # source LGR simulation function
 
-my_trap_rate = data.frame(Week = 1:52,
-                          trap.rate = 0.08,
-                          trap.open = T)
+SimulateBranchData <- function(trap.rate.df){
 
-dat <- SimulateLGRdata(N.lgr = 2500,
-                       n.pops = c(1,1),
-                       run.mu.mu = c(160, 1),
-                       run.mu.sd = c(22, 1),
-                       run.sd.mu = c(17,1),
-                       run.sd.sd = c(8,1),
-                       hatch.pop.prob = 0.1,
-                       hnc.pop.prob = 0.1,
-                       fallback.rate = 0.06,
+  source("SimFnc.R") # source LGR simulation function
+
+  n.branch.pops <- c(rep(1,9),9)
+
+  branch.size <- c(rep(250,3),rep(1000,3),rep(3000,3),12250)
+
+  branch.det <- data.frame(lower = c(rep(c(.5,.5,.95),3),0),
+                         upper = c(rep(c(.5,.95,.95),3),0))
+  
+  valid.list <- list()
+
+  for(i in 1:length(branch.size)){
+    tmp <- SimulateLGRdata(N.lgr = branch.size[i],
+                       n.pops = c(n.branch.pops[i],0),
+                       run.mu.mu = c(171, 0),
+                       run.mu.sd = c(13, 0),
+                       run.sd.mu = c(22,0),
+                       run.sd.sd = c(7,0),
+                       hatch.pop.prob = 0.0,
+                       hnc.pop.prob = 0.0,
+                       fallback.rate = 0.0,
                        reascension.rate = 1,
-                       night.passage.rate = .06,
+                       night.passage.rate = 0.0,
                        window.rate = 50/60,
                        marked.rate = 0.0,
                        ladder.det = 0.0,
                        start.date = ymd('20150101'),
                        trap.rate.df = my_trap_rate)
 
-tmp <- SimulateLGRdata(N.lgr = 1000,
-                trap.rate.df = my_trap_rate)
+  branch.df <- tmp$sim %>%
+    mutate(Lower.obs = rbinom(branch.size[i],1,branch.det[i,1]),
+           Upper.obs = rbinom(branch.size[i],1,branch.det[i,2])) %>%
+    filter(Trap == 1)
 
-tmp <- SimulateLGRdata(N.lgr = 250, trap.rate.df = my_trap_rate)
+  valid.list[[i]] <- branch.df
+} # end iloop
 
+names(valid.list) <- c(paste0("Branch-",1:9),"Black-Box")
 
+valid.df <- ldply(valid.list) %>%
+          select(Branch = .id, everything())
+
+return(valid.df)
+
+} # end function
+
+#--------------------------------------------------------------
+# Test the function
+#--------------------------------------------------------------
+
+my_trap_rate = data.frame(Week = 1:52,
+                          trap.rate = 0.16, # 0.16
+                          trap.open = T)
+
+# my_trap_rate %<>%
+#   mutate(trap.rate = ifelse(Week %in% 30:32, 0, trap.rate),
+#          trap.open = ifelse(Week %in% 30:32, F, trap.open))
+
+valid.df <- SimulateBranchData(trap.rate.df = my_trap_rate)
+
+valid.df %>%
+  group_by(Branch) %>%
+  summarise(n.tags = n(),
+            lower = sum(Lower.obs)/n(), #obs. detection probs. at both sites
+            upper = sum(Upper.obs)/n())
+
+dim(valid.df)[1] # total valid tags
+
+  
