@@ -117,55 +117,74 @@ SimulateLGRdata = function(N.lgr = 100000,
     arrange(Day, Group, Origin) %>%
     select(id, everything())
   
-  LGR.reascents = LGR.df %>%
-    filter(Reascent == 1) %>%
-    mutate(Day = Day + 1 + rpois(nrow(.), 2),
-           Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
-           Fallback = rbinom(nrow(.), 1, fallback.rate),
-           Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
-           Night.passage = rbinom(nrow(.), 1, night.passage.rate),
-           Day.passage = 1 - Night.passage,
-           Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
-    select(-trap.rate, -trap_open) %>%
-    left_join(trap.rate.df) %>%
-    mutate(Trap = rbinom(nrow(.), 1, trap.rate),
-           Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
-    arrange(Day, Group, Origin)
+  if(sum(LGR.df$Reascent) > 0) {
+    LGR.reascents = LGR.df %>%
+      filter(Reascent == 1) %>%
+      mutate(Day = Day + 1 + rpois(nrow(.), 2),
+             Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
+             Fallback = rbinom(nrow(.), 1, fallback.rate),
+             Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
+             Night.passage = rbinom(nrow(.), 1, night.passage.rate),
+             Day.passage = 1 - Night.passage,
+             Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
+      select(-trap.rate, -trap_open) %>%
+      left_join(trap.rate.df) %>%
+      mutate(Trap = rbinom(nrow(.), 1, trap.rate),
+             Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
+      arrange(Day, Group, Origin)
+  } else {
+    LGR.reascents = LGR.df %>%
+      slice(1) %>%
+      mutate_each(funs(ifelse(!is.na(.), NA, NA)))
+  }
   
-  LGR.reascents_2 = LGR.reascents %>%
-    filter(Reascent == 1) %>%
-    mutate(Day = Day + 1 + rpois(nrow(.), 2),
-           Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
-           Fallback = rbinom(nrow(.), 1, fallback.rate),
-           Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
-           Night.passage = rbinom(nrow(.), 1, night.passage.rate),
-           Day.passage = 1 - Night.passage,
-           Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
-    select(-trap.rate, -trap_open) %>%
-    left_join(trap.rate.df) %>%
-    mutate(Trap = rbinom(nrow(.), 1, trap.rate),
-           Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
-    arrange(Day, Group, Origin)
+  if(sum(LGR.reascents$Reascent, na.rm = T) > 0) {
+    LGR.reascents_2 = LGR.reascents %>%
+      filter(Reascent == 1) %>%
+      mutate(Day = Day + 1 + rpois(nrow(.), 2),
+             Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
+             Fallback = rbinom(nrow(.), 1, fallback.rate),
+             Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
+             Night.passage = rbinom(nrow(.), 1, night.passage.rate),
+             Day.passage = 1 - Night.passage,
+             Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
+      select(-trap.rate, -trap_open) %>%
+      left_join(trap.rate.df) %>%
+      mutate(Trap = rbinom(nrow(.), 1, trap.rate),
+             Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
+      arrange(Day, Group, Origin)
+  } else {
+    LGR.reascents_2 = LGR.df %>%
+      slice(1) %>%
+      mutate_each(funs(ifelse(!is.na(.), NA, NA)))
+  }
   
-  LGR.reascents_3 = LGR.reascents_2 %>%
-    filter(Reascent == 1) %>%
-    mutate(Day = Day + 1 + rpois(nrow(.), 2),
-           Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
-           Fallback = rbinom(nrow(.), 1, fallback.rate),
-           Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
-           Night.passage = rbinom(nrow(.), 1, night.passage.rate),
-           Day.passage = 1 - Night.passage,
-           Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
-    select(-trap.rate, -trap_open) %>%
-    left_join(trap.rate.df) %>%
-    mutate(Trap = rbinom(nrow(.), 1, trap.rate),
-           Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
-    arrange(Day, Group, Origin)
+  if(sum(LGR.reascents_2$Reascent, na.rm = T) > 0) {
+    LGR.reascents_3 = LGR.reascents_2 %>%
+      filter(Reascent == 1) %>%
+      mutate(Day = Day + 1 + rpois(nrow(.), 2),
+             Week = week(ymd(paste0(year(start.date), '0101')) + days(Day)),
+             Fallback = rbinom(nrow(.), 1, fallback.rate),
+             Reascent = Fallback * rbinom(nrow(.), 1, reascension.rate),
+             Night.passage = rbinom(nrow(.), 1, night.passage.rate),
+             Day.passage = 1 - Night.passage,
+             Window.passage = Day.passage * rbinom(nrow(.), 1, window.rate)) %>%
+      select(-trap.rate, -trap_open) %>%
+      left_join(trap.rate.df) %>%
+      mutate(Trap = rbinom(nrow(.), 1, trap.rate),
+             Ladder = Marked * rbinom(nrow(.), 1, ladder.det)) %>%
+      arrange(Day, Group, Origin)
+  } else {
+    LGR.reascents_3 = LGR.df %>%
+      slice(1) %>%
+      mutate_each(funs(ifelse(!is.na(.), NA, NA)))
+  }
   
   LGR.df %<>%
     bind_rows(LGR.reascents) %>%
     bind_rows(LGR.reascents_2) %>%
     bind_rows(LGR.reascents_3) %>%
+    filter(!is.na(id)) %>%
     mutate(Date = start.date + days(Day)) %>%
     group_by(Week) %>%
     mutate(Start_Date = min(Date)) %>%

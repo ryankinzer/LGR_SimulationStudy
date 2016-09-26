@@ -51,10 +51,11 @@ result_nms = result_nms[!grepl('other', result_nms)]
 scenario_nms = gsub('^Sim_', '', result_nms)
 scenario_nms = gsub('\\.rda$', '', scenario_nms)
 # length(scenario_nms)
-scenario_nms = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F))
-
 res_list = vector('list', length(scenario_nms))
 names(res_list) = scenario_nms
+
+# scenario_nms = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F))
+
 for(i in 1:length(res_list)) {
   load(paste0('SimulationFits/', result_nms[i]))
   res_list[[i]] = res
@@ -86,13 +87,17 @@ res_long_df <- res_df %>%
   distinct() %>%
   ungroup() %>%
   left_join(res_df) %>%
-  mutate(Scenario = factor(Scenario, levels = scenario_nms)) %>%
+  mutate(Scenario = factor(Scenario, levels = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), 
+                                                sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), 
+                                                sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F)))) %>%
   gather(key, point, -Scenario, -sim, -Truth, -Variable) %>%
   separate(key, into = c("Model","est"), sep = "_") %>%
   spread(est,point) %>%
-  mutate(cv = (uppCI - lowCI) / (2 * qnorm(0.975)) / est,
+  mutate(se = (uppCI - lowCI) / (2 * qnorm(0.975)),
+         cv = se / est,
          bias = est - Truth,
          rel_bias = bias / Truth,
+         MSE = se^2 + bias^2,
          inCI = ifelse(inCI == 1, T, ifelse(inCI == 0, F, NA)))
 ```
 
@@ -134,16 +139,57 @@ print(rel_bias_p)
 # Tables
 
 ```{r coverage_tab}
-res_long_df %>%
+cover_tab = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
   group_by(Scenario, Variable, Model) %>%
   summarise(median_Truth = median(Truth),
-            covarage = sum(inCI) / n(),
-            CIwidth = median(uppCI - lowCI),
-            median_CV = median(cv),
+            coverage = sum(inCI) / n()) %>%
+  ungroup() %>%
+  spread(Model, coverage)
+
+# which have coverage < 90% ?
+if(length(which(round(cover_tab$ISEMP, 2) < 0.9)) > 0) {
+  cover_mat = data.frame(row = which(round(cover_tab$ISEMP, 2) < 0.9),
+                         col = which(names(cover_tab) == 'ISEMP'))
+} else {
+  cover_mat = data.frame(row = NA,
+                         col = which(names(cover_tab) == 'ISEMP'))
+}
+
+cover_mat %<>%
+  bind_rows(data.frame(row = which(round(cover_tab$SCOBI, 2) < 0.9),
+                       col = which(names(cover_tab) == 'SCOBI'))) %>%
+  filter(!is.na(row))
+cover_mat %<>%
+  bind_rows(cover_mat %>%
+              mutate(col = 1))
+
+
+cover_tab %>%
+  pander(emphasize.strong.cells = as.matrix(cover_mat))
+
+```
+
+```{r bias_tab}
+bias_tab = res_long_df %>%
+  filter(grepl('Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
+  group_by(Scenario, Variable, Model) %>%
+  summarise(Avg_Truth = round(median(Truth)),
             Bias = median(bias),
-            Rel_Bias = median(rel_bias))# %>%
-  # pander(emphasize.strong.rows = c(8,10,12))
+            Rel_Bias = median(rel_bias),
+            SE = median(se),
+            RMSE = sqrt(SE^2 + Bias^2))
+
+bias_tab %>%
+  pander(emphasize.strong.rows = with(bias_tab, which(abs(RMSE - SE) > 10)))
 ```
 
 # Coverage Plots
@@ -156,25 +202,29 @@ pd = .4
 res_long_df %>%
   filter(sim %in% samp_sims) %>%
   filter(grepl('^Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
   mutate(low_bias = lowCI - Truth,
          upp_bias = uppCI - Truth) %>%
-  ggplot(aes(x = sim,
-             y = bias,
+  ggplot(aes(y = sim,
+             x = bias,
              color = Model,
              shape = inCI)) +
   scale_shape_manual(values = c('TRUE' = 19,
                                 'FALSE' = 1)) +
-  geom_errorbar(aes(ymin = low_bias,
-                    ymax = upp_bias),
-                position = position_dodge(width = pd)) +
+  geom_errorbarh(aes(xmin = low_bias,
+                     xmax = upp_bias),
+                 position = position_dodge(width = pd)) +
   geom_point(position = position_dodge(width = pd)) +
-  geom_hline(yintercept = 0,
+  geom_vline(xintercept = 0,
              linetype = 2) +
-  facet_grid(Variable ~ Scenario, scales = 'free_y') +
+  facet_grid(Scenario ~ Variable, scales = 'free_x') +
   scale_color_brewer(palette = 'Set1') +
-  theme(axis.text.x = element_blank()) +
-  labs(x = 'Simulation',
-       y = 'Bias',
+  theme(axis.text.y = element_blank()) +
+  labs(y = 'Simulation',
+       x = 'Bias',
        shape = 'In Conf. Int.',
        title = paste('Sample of', length(samp_sims), 'Simulations'))
 ```
