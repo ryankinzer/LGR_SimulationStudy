@@ -75,7 +75,19 @@ res_df = ldply(res_list,
                                                 'All.Fish',
                                                 'Daytime.Fish',
                                                 'Night.Fish',
-                                                'Reascent.Fish')))
+                                                'Reascent.Fish'))) %>%
+  mutate(Scenario = revalue(Scenario,
+                            c('Baseline_WinErr_high' = 'Baseline_Err_H',
+                              'Baseline_WinErr_low' = 'Baseline_Err_L',
+                              'NightReasc' = 'N-R',
+                              'NightReasc_WinErr_high' = 'N-R_Err_H',
+                              'NightReasc_WinErr_low' = 'N-R_Err_L',
+                              'TrapShutdown' = 'TrapDown',
+                              'TrapShutdown_WinErr_high' = 'TrapDown_Err_H',
+                              'TrapShutdown_WinErr_low' = 'TrapDown_Err_L',
+                              'NightReasc_TrapShutdown' = 'N-R_TrapDown',
+                              'NightReasc_TrapShutdown_WinErr_high' = 'N-R_TrapDown_Err_H',
+                              'NightReasc_TrapShutdown_WinErr_low' = 'N-R_TrapDown_Err_L')))
 rm(res_list)
 
 #------------------------------------------------------
@@ -87,9 +99,7 @@ res_long_df <- res_df %>%
   distinct() %>%
   ungroup() %>%
   left_join(res_df) %>%
-  mutate(Scenario = factor(Scenario, levels = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), 
-                                                sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), 
-                                                sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F)))) %>%
+  mutate(Scenario = factor(Scenario, levels = paste0(rep(c('Baseline', 'TrapDown', 'N-R', 'N-R_TrapDown'), each = 3), c('', '_Err_L', '_Err_H')))) %>%
   gather(key, point, -Scenario, -sim, -Truth, -Variable) %>%
   separate(key, into = c("Model","est"), sep = "_") %>%
   spread(est,point) %>%
@@ -111,7 +121,8 @@ abs_bias_p = res_long_df %>%
   geom_hline(yintercept = 0,
              linetype = 2) +
   facet_wrap(~ Scenario, scales = 'free') +
-  labs(y = 'Bias')
+  labs(y = 'Bias') +
+  theme(legend.position = 'bottom')
 
 rel_bias_p = res_long_df %>%
   ggplot(aes(x = Model,
@@ -123,23 +134,40 @@ rel_bias_p = res_long_df %>%
              linetype = 2) +
   facet_wrap(~ Scenario, scales = 'free') +
   labs(y = 'Relative Bias') +
-  coord_cartesian(ylim = c(-0.5, 0.5))
+  coord_cartesian(ylim = c(-0.5, 0.5)) +
+  theme(legend.position = 'bottom')
+```
+
+```{r fig_tab_captions}
+abs_bias_fig = fig_nums('abs_bias_fig',
+                        'Boxplots showing distrbution of bias across all simulations, for each variable of interest.')
+
+rel_bias_fig = fig_nums('rel_bias_fig',
+                        'Boxplots showing distrbution of relative bias (bias / truth) across all simulations, for each variable of interest.')
+
+coverage_tab = tab_nums('coverage_tab',
+                        'Proportion of simulations when 95% confidence intervals covered the truth value for the ISEMP and SCOBI models (cov), as well as the median standard error for those estimates (SE). Highlighted cells depict situations where 95% coverage was less than 90%.')
+
+bias_tab = tab_nums('bias_tab',
+                    'Displays median bias, relative bias, standard error and root mean squared error (RMSE = sqrt(SE$^2$ + Bias$^2$)).')
+
 ```
 
 # Bias Plots
 
-```{r abs_bias_fig}
+```{r abs_bias_fig, fig.cap = fig_nums('abs_bias_fig')}
 print(abs_bias_p)
 ```
 
-```{r rel_bias_fig}
+```{r rel_bias_fig, fig.cap= fig_nums('rel_bias_fig')}
 print(rel_bias_p)
 ```
 
 # Tables
 
+`r tab_nums('coverage_tab')`
 ```{r coverage_tab}
-cover_tab = res_long_df %>%
+cover_df = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
   mutate(Variable = revalue(Variable,
                             c('Unique.Wild.Fish' = 'Wild',
@@ -147,22 +175,34 @@ cover_tab = res_long_df %>%
                               'Unique.HNC.Fish' = 'HNC'))) %>%
   group_by(Scenario, Variable, Model) %>%
   summarise(median_Truth = median(Truth),
-            coverage = sum(inCI) / n()) %>%
-  ungroup() %>%
-  spread(Model, coverage)
+            coverage = sum(inCI) / n(),
+            SE = median(se)) %>%
+  ungroup()
+
+cover_tab = cover_df %>%
+  select(-SE) %>%
+  spread(Model, coverage) %>%
+  rename(ISEMP_cov = ISEMP,
+         SCOBI_cov = SCOBI) %>%
+  left_join(cover_df %>%
+  select(-coverage) %>%
+  spread(Model, SE) %>%
+  rename(ISEMP_SE = ISEMP,
+         SCOBI_SE = SCOBI)) %>%
+  select(Scenario:median_Truth, matches('ISEMP'), matches('SCOBI'))
 
 # which have coverage < 90% ?
-if(length(which(round(cover_tab$ISEMP, 2) < 0.9)) > 0) {
-  cover_mat = data.frame(row = which(round(cover_tab$ISEMP, 2) < 0.9),
-                         col = which(names(cover_tab) == 'ISEMP'))
+if(length(which(round(cover_tab$ISEMP_cov, 2) < 0.9)) > 0) {
+  cover_mat = data.frame(row = rep(which(round(cover_tab$ISEMP_cov, 2) < 0.9), each = 2),
+                         col = grep('ISEMP', names(cover_tab)))
 } else {
   cover_mat = data.frame(row = NA,
-                         col = which(names(cover_tab) == 'ISEMP'))
+                         col = which(names(cover_tab) == 'ISEMP_cov'))
 }
 
 cover_mat %<>%
-  bind_rows(data.frame(row = which(round(cover_tab$SCOBI, 2) < 0.9),
-                       col = which(names(cover_tab) == 'SCOBI'))) %>%
+  bind_rows(data.frame(row = rep(which(round(cover_tab$SCOBI_cov, 2) < 0.9), each = 2),
+                       col = grep('SCOBI', names(cover_tab)))) %>%
   filter(!is.na(row))
 cover_mat %<>%
   bind_rows(cover_mat %>%
@@ -174,6 +214,7 @@ cover_tab %>%
 
 ```
 
+`r tab_nums('bias_tab')`
 ```{r bias_tab}
 bias_tab = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
@@ -189,8 +230,10 @@ bias_tab = res_long_df %>%
             RMSE = sqrt(SE^2 + Bias^2))
 
 bias_tab %>%
-  pander(emphasize.strong.rows = with(bias_tab, which(abs(RMSE - SE) > 10)))
+  pander()
+  # pander(emphasize.strong.rows = with(bias_tab, which(abs(RMSE - SE) > 10)))
 ```
+
 
 # Coverage Plots
 
@@ -235,13 +278,13 @@ The SCOBI model exhibits some bias when re-ascension and night-time passage rate
 
 ```{r night_reasc_bias}
 bias_df = res_df %>%
-  filter(Scenario == 'NightReasc',
+  filter(Scenario == 'N-R',
          Variable %in% c('Night.Fish', 'Reascent.Fish')) %>%
   select(Scenario, sim, Variable, Truth) %>%
   spread(Variable, Truth) %>%
   mutate(pot_bias = Reascent.Fish - Night.Fish) %>%
   left_join(res_df %>%
-              filter(Scenario == 'NightReasc',
+              filter(Scenario == 'N-R',
                      grepl('Unique', Variable)) %>%
               group_by(Scenario, sim) %>%
               summarise(Uni.Fish.Truth = sum(Truth),
