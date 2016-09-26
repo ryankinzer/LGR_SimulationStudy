@@ -7,27 +7,27 @@
 #-----------------------------------------------------------------
 # set up AMI
 #-----------------------------------------------------------------
-excludeSyncDropbox("*")
-includeSyncDropbox("LGR_SimulationStudy")
-
-# set up RPushbullet
-install.packages(c('jsonlite', 'RPushbullet'))
-
-library(jsonlite)
-library(RPushbullet)
-
-cat(toJSON(list(key="dCj80OM9XSYx1xRUyvCp5KlN4aT456Kg", devices=c('ujx5LBhEzSusjAiVsKnSTs', 'ujx5LBhEzSusjzWIEVDzOK'), names=c('phone', 'Chrome'))), file='~/.rpushbullet.json')
-
-detach('package:RPushbullet', unload=T)
-
-library(RPushbullet)
-print(pbGetDevices())
-
-# Test
-# if recipients = 1, this should go to phone (2 should go to Chrome)
-pbPost("note", "Test", "This came from R!", recipients=c(1))
-
-install.packages(c('MCMCpack', 'FSA', 'Rcapture', 'boot', 'msm', 'lubridate', 'magrittr', 'dplyr', 'tidyr', 'ggplot2', 'jagsUI'))
+# excludeSyncDropbox("*")
+# includeSyncDropbox("LGR_SimulationStudy")
+# 
+# # set up RPushbullet
+# install.packages(c('jsonlite', 'RPushbullet'))
+# 
+# library(jsonlite)
+# library(RPushbullet)
+# 
+# cat(toJSON(list(key="dCj80OM9XSYx1xRUyvCp5KlN4aT456Kg", devices=c('ujx5LBhEzSusjAiVsKnSTs', 'ujx5LBhEzSusjzWIEVDzOK'), names=c('phone', 'Chrome'))), file='~/.rpushbullet.json')
+# 
+# detach('package:RPushbullet', unload=T)
+# 
+# library(RPushbullet)
+# print(pbGetDevices())
+# 
+# # Test
+# # if recipients = 1, this should go to phone (2 should go to Chrome)
+# pbPost("note", "Test", "This came from R!", recipients=c(1))
+# 
+# install.packages(c('MCMCpack', 'FSA', 'Rcapture', 'boot', 'msm', 'lubridate', 'magrittr', 'dplyr', 'tidyr', 'ggplot2', 'jagsUI'))
 
 #-----------------------------------------------------------------
 library(MCMCpack)
