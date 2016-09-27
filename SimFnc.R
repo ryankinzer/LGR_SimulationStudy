@@ -7,13 +7,15 @@
 #-----------------------------------------------------------------
 # LGR Simulation Function
 SimulateLGRdata = function(N.lgr = 100000,
-                           n.pops = c(17,5),
-                           run.mu.mu = c(140, 171),
-                           run.mu.sd = c(16, 15),
-                           run.sd.mu = c(16,25),
-                           run.sd.sd = c(8,2),
+                           h.prob = .70,
+                           hnc.prob = .05,
+                           n.pops = 25,
                            hatch.pop.prob = 0.5,
-                           hnc.pop.prob = 0.15,
+                           hnc.pop.prob = 0.15,                           
+                           run.mu.mu = 171,
+                           run.mu.sd = 13,
+                           run.sd.mu = 22,
+                           run.sd.sd = 7,
                            fallback.rate = .06,
                            reascension.rate = 1,
                            night.passage.rate = .06,
@@ -45,41 +47,52 @@ SimulateLGRdata = function(N.lgr = 100000,
   library(plyr)
   library(dplyr)
   library(tidyr)
+  library(magrittr)
   
   # quick clean-up of column names
   trap.rate.df %<>%
     rename(trap_open = trap.open)
   
   # R.V. of population mean run-timing given assigned hyper-parameters
-  pop.mu <- c(rnorm(n.pops[1], run.mu.mu[1], run.mu.sd[1]),
-              rnorm(n.pops[2], run.mu.mu[2], run.mu.sd[2]))
+  # R.V. of population mean run-timing given assigned hyper-parameters
+  pop.mu <- rnorm(n.pops, run.mu.mu[1], run.mu.sd[1])
   
   # R.V. of population standard deviation of run-timing given assigned hyper-parameters
-  pop.sd <- abs(c(rnorm(n.pops[1], run.sd.mu[1], run.sd.sd[1]),
-                  rnorm(n.pops[2], run.sd.mu[2], run.sd.sd[2])))
+  pop.sd <- abs(rnorm(n.pops, run.sd.mu[1], run.sd.sd[1]))
   
-  # Hyper-parameters for population proportions (includes all origins with pop.)
-  pop.p.mu <- rdirichlet(1, alpha = rep(1, sum(n.pops)))
+  # LGR escapement by origin
+  if(h.prob > 0){
+    N.hat <- N.lgr * h.prob
+    hat.pop.p <- rdirichlet(1, alpha = rbinom(n.pops,1,hatch.pop.prob))  
+    N.hat.pop <- rmultinom(1, N.hat, hat.pop.p)  
+  } else {
+    N.hat <- 0
+    N.hat.pop <- rep(0,n.pops)
+  }
   
-  # True population escapement at Lower Granite Dam (includes all origins)
-  N.pop <- rmultinom(1, N.lgr, pop.p.mu)
+  if(hnc.prob >0){  
+    N.hnc <- N.lgr * hnc.prob
+    hnc.pop.p <- rdirichlet(1, alpha = rbinom(n.pops,1,hnc.pop.prob)) 
+    N.hnc.pop <- rmultinom(1, N.hnc, hnc.pop.p)
+  } else {
+    N.hnc <- 0
+    N.hnc.pop <- rep(0,n.pops)
+  } 
+
+  N.wild <- N.lgr - (N.hat + N.hnc)
+  wild.pop.p <- rdirichlet(1, alpha = rep(1, n.pops))
+  N.wild.pop <- rmultinom(1, N.wild, wild.pop.p)
+
+  # LGR escapement by origin and population
+  N.pop.origin <- cbind(N.wild.pop, N.hat.pop, N.hnc.pop)
   
-  # Assign Origin - Wild, Hatchery, Hatchery No Clip
-  w.alpha  <- rep(1, sum(n.pops))
-  h.alpha <- ifelse(rbinom(sum(n.pops), 1, hatch.pop.prob)==1,2,0)
-  nc.alpha <- rbinom(sum(n.pops), 1, hnc.pop.prob)
+  # True population escapement at Lower Granite Dam (includes all origins)  
+  N.pop <- rowSums(N.pop.origin)
   
-  origin.alpha <- cbind(w.alpha, h.alpha, nc.alpha)
-  
-  origin.pop.p <- matrix(NA, nrow=sum(n.pops), ncol=3)
-  N.pop.origin <- matrix(NA, nrow=sum(n.pops), ncol=3)
   Origin <- NULL
-  
   # NEED TO NOW SPLIT COLUMN VALUES INTO INDIVIDUAL RECORDS.
   
-  for(i in 1:sum(n.pops)){
-    origin.pop.p[i,] <- rdirichlet(1, alpha = origin.alpha[i,])
-    N.pop.origin[i,] <- t(rmultinom(1, N.pop[i], origin.pop.p[i,]))
+  for(i in 1:n.pops){
     tmp <- c(rep("NOR", N.pop.origin[i,1]), 
              rep("HOR",N.pop.origin[i,2]), 
              rep("HNC",N.pop.origin[i,3]))
