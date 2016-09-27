@@ -159,10 +159,10 @@ while(i <= n_sim) {
   tot_post = ldply(list('All.Fish' = X.tot.all, 
                         'Daytime.Fish' = X.tot.day, 
                         'Reascent.Fish' = X.tot.reasc, 
-                        'Night.Fish' = X.tot.night,
+                        'Night.Fish' = X.tot.night),
                         'Unique.Wild.Fish' = X.tot.new.wild,
                         'Unique.Hatch.Fish' = X.tot.new.hatch,
-                        'Unique.HNC.Fish' = X.tot.new.hnc), 
+                        'Unique.HNC.Fish' = X.tot.new.hnc),
                    .id='Variable') %>% tbl_df() %>%
     gather(iteration, value, -Variable) %>%
     mutate(iteration = gsub('^V', '', iteration),
