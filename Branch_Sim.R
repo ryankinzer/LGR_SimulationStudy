@@ -6,8 +6,6 @@
 # Modified: 9/26/2016
 #------------------------------------------------------------------------------
 
-library(magrittr)
-
 #source("./Script/lgd_run_timing.R") # generates the run timing parameters
 # shown below.
 
@@ -30,10 +28,8 @@ SimulateBranchData <- function(trap.rate.df){
 
   source("SimFnc.R") # source LGR simulation function
 
-  n.branch.pops <- c(rep(1,9),9)
-
   branch.size <- c(rep(250,3),rep(1000,3),rep(3000,3),12250)
-
+  n.branch.pops <- c(rep(1,9),9)
   branch.det <- data.frame(lower = c(rep(c(.5,.5,.95),3),0),
                          upper = c(rep(c(.5,.95,.95),3),0))
   
@@ -41,21 +37,23 @@ SimulateBranchData <- function(trap.rate.df){
 
   for(i in 1:length(branch.size)){
     tmp <- SimulateLGRdata(N.lgr = branch.size[i],
-                       n.pops = c(n.branch.pops[i],0),
-                       run.mu.mu = c(171, 0),
-                       run.mu.sd = c(13, 0),
-                       run.sd.mu = c(22,0),
-                       run.sd.sd = c(7,0),
-                       hatch.pop.prob = 0.0,
-                       hnc.pop.prob = 0.0,
-                       fallback.rate = 0.0,
-                       reascension.rate = 1,
-                       night.passage.rate = 0.0,
-                       window.rate = 50/60,
-                       marked.rate = 0.0,
-                       ladder.det = 0.0,
-                       start.date = ymd('20150101'),
-                       trap.rate.df = my_trap_rate)
+                           h.prob = 0,
+                           hnc.prob = 0,
+                           n.pops = n.branch.pops[i],
+                           hatch.pop.prob = 0.5,
+                           hnc.pop.prob = 0.15,                           
+                           run.mu.mu = 171,
+                           run.mu.sd = 13,
+                           run.sd.mu = 22,
+                           run.sd.sd = 7,
+                           fallback.rate = 0.0,
+                           reascension.rate = 1,
+                           night.passage.rate = .06,
+                           window.rate = 50/60,
+                           marked.rate = 0.05,
+                           ladder.det = 0.99,
+                           start.date = ymd('20150101'),
+                           trap.rate.df)
 
   branch.df <- tmp$sim %>%
     mutate(Lower.obs = rbinom(branch.size[i],1,branch.det[i,1]),
@@ -79,7 +77,7 @@ return(valid.df)
 #--------------------------------------------------------------
 
 my_trap_rate = data.frame(Week = 1:52,
-                          trap.rate = 0.16, # 0.16
+                          trap.rate = 0.08, # 0.16
                           trap.open = T)
 
 # my_trap_rate %<>%
@@ -95,5 +93,3 @@ valid.df %>%
             upper = sum(Upper.obs)/n())
 
 dim(valid.df)[1] # total valid tags
-
-  
