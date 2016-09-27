@@ -74,6 +74,6 @@ for(i in 1:length(script_nms)) {
   pbPost('note', paste('Starting', gsub('^RunSims_', '', script_nms[i])), recipients=1)
   ptm <- proc.time()
   source(paste0('SimScenarios/', script_nms[i]))
-  pbPost('note', paste(gsub('^RunSims_', '', script_nms[i]), 'finished'), paste('It took', round(c(proc.time() - ptm)[3] / 3600, 1), 'hours to run.'), recipients=NA)
+  pbPost('note', paste(gsub('^RunSims_', '', script_nms[i]), 'finished'), paste('It took', round(c(proc.time() - ptm)[3] / 60, 1), 'minutes to run.'), recipients=NA)
 }
 
