@@ -113,6 +113,7 @@ res_long_df <- res_df %>%
 
 ```{r bias_plots}
 abs_bias_p = res_long_df %>%
+  filter(grepl('Unique', Variable)) %>%
   ggplot(aes(x = Model,
              fill = Variable,
              y = bias)) +
@@ -120,11 +121,14 @@ abs_bias_p = res_long_df %>%
   scale_fill_brewer(palette = 'Set1') +
   geom_hline(yintercept = 0,
              linetype = 2) +
-  facet_wrap(~ Scenario, scales = 'free') +
+  facet_wrap(~ Scenario, 
+             scales = 'free',
+             ncol = 3) +
   labs(y = 'Bias') +
   theme(legend.position = 'bottom')
 
 rel_bias_p = res_long_df %>%
+  filter(grepl('Unique', Variable)) %>%
   ggplot(aes(x = Model,
              fill = Variable,
              y = rel_bias)) +
@@ -132,7 +136,9 @@ rel_bias_p = res_long_df %>%
   scale_fill_brewer(palette = 'Set1') +
   geom_hline(yintercept = 0,
              linetype = 2) +
-  facet_wrap(~ Scenario, scales = 'free') +
+  facet_wrap(~ Scenario, 
+             scales = 'free',
+             ncol = 3) +
   labs(y = 'Relative Bias') +
   coord_cartesian(ylim = c(-0.5, 0.5)) +
   theme(legend.position = 'bottom')
@@ -155,11 +161,11 @@ bias_tab = tab_nums('bias_tab',
 
 # Bias Plots
 
-```{r abs_bias_fig, fig.cap = fig_nums('abs_bias_fig')}
+```{r abs_bias_fig, fig.cap = fig_nums('abs_bias_fig'), fig.height=10}
 print(abs_bias_p)
 ```
 
-```{r rel_bias_fig, fig.cap= fig_nums('rel_bias_fig')}
+```{r rel_bias_fig, fig.cap= fig_nums('rel_bias_fig'), fig.height=10}
 print(rel_bias_p)
 ```
 
