@@ -7,27 +7,27 @@
 #-----------------------------------------------------------------
 # set up AMI
 #-----------------------------------------------------------------
-excludeSyncDropbox("*")
-includeSyncDropbox("LGR_SimulationStudy")
-
-# set up RPushbullet
-install.packages(c('jsonlite', 'RPushbullet'))
-
-library(jsonlite)
-library(RPushbullet)
-
-cat(toJSON(list(key="dCj80OM9XSYx1xRUyvCp5KlN4aT456Kg", devices=c('ujx5LBhEzSusjAiVsKnSTs', 'ujx5LBhEzSusjzWIEVDzOK'), names=c('phone', 'Chrome'))), file='~/.rpushbullet.json')
-
-detach('package:RPushbullet', unload=T)
-
-library(RPushbullet)
-print(pbGetDevices())
-
-# Test
-# if recipients = 1, this should go to phone (2 should go to Chrome)
-pbPost("note", "Test", "This came from R!", recipients=c(1))
-
-install.packages(c('MCMCpack', 'FSA', 'Rcapture', 'boot', 'msm', 'lubridate', 'magrittr', 'dplyr', 'tidyr', 'ggplot2', 'jagsUI'))
+# excludeSyncDropbox("*")
+# includeSyncDropbox("LGR_SimulationStudy")
+# 
+# # set up RPushbullet
+# install.packages(c('jsonlite', 'RPushbullet'))
+# 
+# library(jsonlite)
+# library(RPushbullet)
+# 
+# cat(toJSON(list(key="dCj80OM9XSYx1xRUyvCp5KlN4aT456Kg", devices=c('ujx5LBhEzSusjAiVsKnSTs', 'ujx5LBhEzSusjzWIEVDzOK'), names=c('phone', 'Chrome'))), file='~/.rpushbullet.json')
+# 
+# detach('package:RPushbullet', unload=T)
+# 
+# library(RPushbullet)
+# print(pbGetDevices())
+# 
+# # Test
+# # if recipients = 1, this should go to phone (2 should go to Chrome)
+# pbPost("note", "Test", "This came from R!", recipients=c(1))
+# 
+# install.packages(c('MCMCpack', 'FSA', 'Rcapture', 'boot', 'msm', 'lubridate', 'magrittr', 'dplyr', 'tidyr', 'ggplot2', 'jagsUI'))
 
 #-----------------------------------------------------------------
 library(MCMCpack)
@@ -74,6 +74,6 @@ for(i in 1:length(script_nms)) {
   pbPost('note', paste('Starting', gsub('^RunSims_', '', script_nms[i])), recipients=1)
   ptm <- proc.time()
   source(paste0('SimScenarios/', script_nms[i]))
-  pbPost('note', paste(gsub('^RunSims_', '', script_nms[i]), 'finished'), paste('It took', round(c(proc.time() - ptm)[3] / 3600, 1), 'hours to run.'), recipients=NA)
+  pbPost('note', paste(gsub('^RunSims_', '', script_nms[i]), 'finished'), paste('It took', round(c(proc.time() - ptm)[3] / 60, 1), 'minutes to run.'), recipients=NA)
 }
 
