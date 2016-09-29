@@ -63,8 +63,13 @@ SimulateLGRdata = function(N.lgr = 100000,
   # LGR escapement by origin
   if(h.prob > 0){
     N.hat <- N.lgr * h.prob
-    hat.pop.p <- rdirichlet(1, alpha = rbinom(n.pops,1,hatch.pop.prob))  
-    N.hat.pop <- rmultinom(1, N.hat, hat.pop.p)  
+    hat.pop.p <- rdirichlet(1, alpha = rbinom(n.pops,1,hatch.pop.prob))
+      if(!any(is.na(hat.pop.p))){
+        N.hat.pop <- rmultinom(1, N.hat, hat.pop.p)  
+      } else {
+        N.hat <- 0
+        N.hat.pop <- rep(0,n.pops)
+      }
   } else {
     N.hat <- 0
     N.hat.pop <- rep(0,n.pops)
@@ -72,8 +77,13 @@ SimulateLGRdata = function(N.lgr = 100000,
   
   if(hnc.prob >0){  
     N.hnc <- N.lgr * hnc.prob
-    hnc.pop.p <- rdirichlet(1, alpha = rbinom(n.pops,1,hnc.pop.prob)) 
-    N.hnc.pop <- rmultinom(1, N.hnc, hnc.pop.p)
+    hnc.pop.p <- rdirichlet(1, alpha = rbinom(n.pops,1,hnc.pop.prob))
+      if(!any(is.na(hnc.pop.p))){
+        N.hnc.pop <- rmultinom(1, N.hnc, hnc.pop.p)     
+      } else {
+        N.hnc <- 0
+        N.hnc.pop <- rep(0,n.pops)
+      }
   } else {
     N.hnc <- 0
     N.hnc.pop <- rep(0,n.pops)
