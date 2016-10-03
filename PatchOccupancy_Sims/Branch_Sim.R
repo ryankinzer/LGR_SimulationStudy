@@ -23,18 +23,21 @@
 #<chr> <int>    <dbl>    <dbl>    <dbl>    <dbl>
 #1 Chinook   149 160.8827 21.98749 17.52383 7.999656
 
+#------------------------------------------------
+# simulate data
+#------------------------------------------------
 
-SimulateBranchData <- function(trap.rate.df){
-
-  source("SimFnc.R") # source LGR simulation function
-
-  branch.size <- c(rep(250,3),rep(1000,3),rep(3000,3),12250)
-  n.branch.pops <- c(rep(1,9),9)
-  branch.det <- data.frame(lower = c(rep(c(.5,.5,.95),3),0),
-                         upper = c(rep(c(.5,.95,.95),3),0))
+SimulateBranchData <- function(trap.rate.df,
+                               branch.size = c(rep(250,3),rep(1000,3),rep(3000,3),12250),
+                               n.branch.pops = c(rep(1,9),9),
+                               branch.det = data.frame(lower = c(rep(c(.5,.5,.95),3),0),
+                                                       upper = c(rep(c(.5,.95,.95),3),0))){
   
-  valid.list <- list()
-
+  # source("SimFnc.R") # source LGR simulation function
+  
+  valid.list = branch.list = vector('list', length(branch.size))
+  names(valid.list) = names(branch.list) = c(paste0("Branch-",1:9),"Black-Box")
+  
   for(i in 1:length(branch.size)){
     tmp <- SimulateLGRdata(N.lgr = branch.size[i],
                            h.prob = 0,
@@ -54,42 +57,45 @@ SimulateBranchData <- function(trap.rate.df){
                            ladder.det = 0.99,
                            start.date = ymd('20150101'),
                            trap.rate.df)
+    
+    branch.list[[i]] <- tmp$sim %>%
+      mutate(Lower.obs = rbinom(branch.size[i],1,branch.det[i,1]),
+             Upper.obs = rbinom(branch.size[i],1,branch.det[i,2]))
 
-  branch.df <- tmp$sim %>%
-    mutate(Lower.obs = rbinom(branch.size[i],1,branch.det[i,1]),
-           Upper.obs = rbinom(branch.size[i],1,branch.det[i,2])) %>%
-    filter(Trap == 1)
+    valid.list[[i]] <- branch.list[[i]] %>%
+      filter(Trap == 1)
+  } # end iloop
 
-  valid.list[[i]] <- branch.df
-} # end iloop
+  valid.df <- ldply(valid.list,
+                    .id = 'Branch') %>%
+    tbl_df()
+  
+  lgr_truth <- ldply(branch.list,
+                    .id = 'Branch') %>%
+    tbl_df()
 
-names(valid.list) <- c(paste0("Branch-",1:9),"Black-Box")
-
-valid.df <- ldply(valid.list) %>%
-          select(Branch = .id, everything())
-
-return(valid.df)
+  return(list(valid_tags = valid.df,
+              lgr_truth = lgr_truth))
 
 } # end function
 
-#--------------------------------------------------------------
-# Test the function
-#--------------------------------------------------------------
+#------------------------------------------------
+# generate initial values for JAGS
+#------------------------------------------------
 
-my_trap_rate = data.frame(Week = 1:52,
-                          trap.rate = 0.08, # 0.16
-                          trap.open = T)
-
-# my_trap_rate %<>%
-#   mutate(trap.rate = ifelse(Week %in% 30:32, 0, trap.rate),
-#          trap.open = ifelse(Week %in% 30:32, F, trap.open))
-
-valid.df <- SimulateBranchData(trap.rate.df = my_trap_rate)
-
-valid.df %>%
-  group_by(Branch) %>%
-  summarise(n.tags = n(),
-            lower = sum(Lower.obs)/n(), #obs. detection probs. at both sites
-            upper = sum(Upper.obs)/n())
-
-dim(valid.df)[1] # total valid tags
+jagsInits = function(valid_df) {
+  
+  a_init = valid_df %>% 
+    mutate(detect = ifelse(Lower.obs == 1 | Upper.obs == 1, 1, 0)) %>%
+    mutate(obs_branch = ifelse(detect == 1, Branch, NA),
+           obs_branch = gsub('Branch-', '', obs_branch)) %>%
+    select(obs_branch) %>%
+    as.matrix() %>%
+    as.integer()
+  
+  jags.inits = function() {
+    list("a" = a_init)
+  }
+  
+  return(jags.inits)
+}
