@@ -54,8 +54,6 @@ scenario_nms = gsub('\\.rda$', '', scenario_nms)
 res_list = vector('list', length(scenario_nms))
 names(res_list) = scenario_nms
 
-# scenario_nms = c(sort(scenario_nms[grepl('Baseline', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('NightReasc', scenario_nms)], decreasing = F), sort(scenario_nms[grepl('TrapShutdown', scenario_nms)], decreasing = F))
-
 for(i in 1:length(res_list)) {
   load(paste0('SimulationFits/', result_nms[i]))
   res_list[[i]] = res
@@ -112,36 +110,77 @@ res_long_df <- res_df %>%
 ```
 
 ```{r bias_plots}
+# abs_bias_p = res_long_df %>%
+#   filter(grepl('Unique', Variable)) %>%
+#   ggplot(aes(x = Model,
+#              fill = Variable,
+#              y = bias)) +
+#   geom_boxplot() +
+#   scale_fill_brewer(palette = 'Set1') +
+#   geom_hline(yintercept = 0,
+#              linetype = 2) +
+#   facet_wrap(~ Scenario, 
+#              scales = 'free',
+#              ncol = 3) +
+#   labs(y = 'Bias') +
+#   theme(legend.position = 'bottom')
+# 
+# rel_bias_p = res_long_df %>%
+#   filter(grepl('Unique', Variable)) %>%
+#   ggplot(aes(x = Model,
+#              fill = Variable,
+#              y = rel_bias)) +
+#   geom_boxplot() +
+#   scale_fill_brewer(palette = 'Set1') +
+#   geom_hline(yintercept = 0,
+#              linetype = 2) +
+#   facet_wrap(~ Scenario, 
+#              scales = 'free',
+#              ncol = 3) +
+#   labs(y = 'Relative Bias') +
+#   coord_cartesian(ylim = c(-0.5, 0.5)) +
+#   theme(legend.position = 'bottom')
+
 abs_bias_p = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
-  ggplot(aes(x = Model,
-             fill = Variable,
-             y = bias)) +
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
+  mutate(grp = paste(Variable, Model, sep = '_')) %>%
+  mutate(Scenario = factor(Scenario, levels = sort(levels(res_long_df$Scenario), decreasing = T))) %>%
+  ggplot(aes(x = Scenario,
+             y = bias,
+             fill = grp)) +
   geom_boxplot() +
-  scale_fill_brewer(palette = 'Set1') +
+  scale_fill_brewer(palette = 'Paired') +
   geom_hline(yintercept = 0,
              linetype = 2) +
-  facet_wrap(~ Scenario, 
-             scales = 'free',
-             ncol = 3) +
-  labs(y = 'Bias') +
-  theme(legend.position = 'bottom')
+  labs(y = 'Bias',
+       fill = 'Fish / Model') +
+  theme(legend.position = 'bottom') +
+  coord_flip()
 
 rel_bias_p = res_long_df %>%
   filter(grepl('Unique', Variable)) %>%
-  ggplot(aes(x = Model,
-             fill = Variable,
-             y = rel_bias)) +
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
+  mutate(grp = paste(Variable, Model, sep = '_')) %>%
+  mutate(Scenario = factor(Scenario, levels = sort(levels(res_long_df$Scenario), decreasing = T))) %>%
+  ggplot(aes(x = Scenario,
+             y = rel_bias,
+             fill = grp)) +
   geom_boxplot() +
-  scale_fill_brewer(palette = 'Set1') +
+  scale_fill_brewer(palette = 'Paired') +
   geom_hline(yintercept = 0,
              linetype = 2) +
-  facet_wrap(~ Scenario, 
-             scales = 'free',
-             ncol = 3) +
-  labs(y = 'Relative Bias') +
-  coord_cartesian(ylim = c(-0.5, 0.5)) +
-  theme(legend.position = 'bottom')
+  labs(y = 'Relative Bias',
+       fill = 'Fish / Model') +
+  theme(legend.position = 'bottom') +
+  coord_flip(ylim = c(-0.5, 0.5))
+  
 ```
 
 ```{r fig_tab_captions}
@@ -151,16 +190,38 @@ abs_bias_fig = fig_nums('abs_bias_fig',
 rel_bias_fig = fig_nums('rel_bias_fig',
                         'Boxplots showing distrbution of relative bias (bias / truth) across all simulations, for each variable of interest.')
 
+bias_tab = tab_nums('bias_tab',
+                    'Displays median bias and relative bias for the ISEMP and SCOBI models, by scenario and type of fish. Highlighted cells depict situations where the relative bias was greater than 5%.')
+
 coverage_tab = tab_nums('coverage_tab',
                         'Proportion of simulations when 95% confidence intervals covered the truth value for the ISEMP and SCOBI models (cov), as well as the median standard error for those estimates (SE). Highlighted cells depict situations where 95% coverage was less than 90%.')
 
-bias_tab = tab_nums('bias_tab',
-                    'Displays median bias, relative bias, standard error and root mean squared error (RMSE = sqrt(SE$^2$ + Bias$^2$)).')
+coverage_fig = fig_nums('coverage_fig',
+                        'A sample of simulations, showing the point estimate and 95% confidence intervals after substracting the truth. Red is the ISEMP model, blue is the SCOBI model. Closed circles indictate the 95% confidence intervals contain the true value, open circles indicate they do not.')
+
 
 ```
 
-# Bias Plots
+# Introduction
 
+The purpose of this study is to evaluate the performance of two methods for estimating escapement past Lower Granite Dam. This includes separate wild, hatchery and hatchery-no-clip estimates. The two methods are the current method employed by IDFG, known as the SCOBI model, and the model developed by the Intregrated Status & Effectiveness Monitoring Program (ISEMP), labeled below as the ISEMP model.
+
+# Methods
+
+Using a simulation framework allows us to evaluate each model's performance in relation to a known "truth". Therefore, we developed such a framework with flexible inputs that could be chosen by the user. 
+
+***Ryan, can you add to this, and include Table 1 and 2 from the "Realized and Proposed Sim Inputs.docx" document?***
+
+We assessed the models' performance by examining the potential bias in the estimates, both absolute and relative, and by assessing the coverage probabilities: the proportion of simulations when the 95% credible intervals or confidence intervals included the truth. Ideally, we would like to use a model with unbiased estimates, and with coverage probabilities close to 95%. 
+
+# Results
+
+## Bias
+*  The ISEMP model estimates were unbiased for all 12 tested scenarios
+*  The SCOBI model estimates were unbiased for 6 of the 12 tested scenarios. The scenarios with biased estimates were all ones where the night-time passage rate did not equal the re-ascension rate (equality of those two is an assumption of the SCOBI model).
+    *  For those scenarios, the SCOBI estimates were biased by the difference between the night-time passage and re-ascension rates (~5%).
+
+### Bias Plots
 ```{r abs_bias_fig, fig.cap = fig_nums('abs_bias_fig'), fig.height=10}
 print(abs_bias_p)
 ```
@@ -169,8 +230,107 @@ print(abs_bias_p)
 print(rel_bias_p)
 ```
 
-# Tables
+### Bias Table
 
+`r tab_nums('bias_tab')`
+```{r bias_tab}
+bias_df = res_long_df %>%
+  filter(grepl('Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
+  group_by(Scenario, Variable, Model) %>%
+  summarise(Avg_Truth = round(median(Truth)),
+            Bias = median(bias),
+            Rel_Bias = median(rel_bias)) %>%
+  ungroup()
+
+bias_tab = bias_df %>%
+  select(-Rel_Bias) %>%
+  spread(Model, Bias) %>%
+  rename(ISEMP_bias = ISEMP,
+         SCOBI_bias = SCOBI) %>%
+  left_join(bias_df %>%
+  select(-Bias) %>%
+  spread(Model, Rel_Bias) %>%
+  rename(ISEMP_rel_bias = ISEMP,
+         SCOBI_rel_bias = SCOBI)) %>%
+  select(Scenario:Avg_Truth, matches('ISEMP'), matches('SCOBI'))
+
+# bias_tab %>%
+#   pander()
+
+# which have relative bias > 5% ?
+if(length(which(round(bias_tab$ISEMP_rel_bias, 3) > 0.05)) > 0) {
+  bias_mat = data.frame(row = rep(which(round(bias_tab$ISEMP_rel_bias, 3) > 0.05), each = 2),
+                         col = grep('ISEMP', names(bias_tab)))
+} else {
+  bias_mat = data.frame(row = NA,
+                         col = which(names(bias_tab) == 'ISEMP_rel_bias'))
+}
+
+bias_mat %<>%
+  bind_rows(data.frame(row = rep(which(round(bias_tab$SCOBI_rel_bias, 3) >= 0.05), each = 2),
+                       col = grep('SCOBI', names(bias_tab)))) %>%
+  filter(!is.na(row))
+bias_mat %<>%
+  bind_rows(bias_mat %>%
+              mutate(col = 1)) %>%
+  distinct()
+
+
+bias_tab %>%
+  pander(emphasize.strong.cells = as.matrix(bias_mat))
+
+```
+
+## Coverage
+*  The ISEMP model provided appropriate coverage in its 95% credible intervals. 
+    * Most of the time, the coverage was over 95%, suggesting there may be ways to improve this model to make slightly more precise estimates.
+*  The SCOBI model provided appropriate coverage in its 95% confidence intervals only when the assumptions were met (baseline and trap shutdown scenarios).
+    * In the 6 scenarios when night-time passage and re-ascension rates were not equal, the SCOBI coverage probabilites were often less than 10% for wild and hatchery fish.
+    * In the other scenarios, when the simulation introduced some error in the window counts, the SCOBI estimates were unbiased on average, but any given simulation led to a biased estimate and confidence intervals that often failed to include the true value.
+
+### Coverage Plots
+
+```{r coverage_fig, fig.cap= fig_nums('coverage_fig'), fig.height=10}
+samp_sims = sample(unique(res_df$sim), 15)
+
+pd = .4
+
+res_long_df %>%
+  filter(sim %in% samp_sims) %>%
+  filter(grepl('^Unique', Variable)) %>%
+  mutate(Variable = revalue(Variable,
+                            c('Unique.Wild.Fish' = 'Wild',
+                              'Unique.Hatch.Fish' = 'Hatchery',
+                              'Unique.HNC.Fish' = 'HNC'))) %>%
+  mutate(low_bias = lowCI - Truth,
+         upp_bias = uppCI - Truth) %>%
+  ggplot(aes(y = sim,
+             x = bias,
+             color = Model,
+             shape = inCI)) +
+  scale_shape_manual(values = c('TRUE' = 19,
+                                'FALSE' = 1)) +
+  geom_errorbarh(aes(xmin = low_bias,
+                     xmax = upp_bias),
+                 position = position_dodge(width = pd)) +
+  geom_point(position = position_dodge(width = pd)) +
+  geom_vline(xintercept = 0,
+             linetype = 2) +
+  facet_grid(Scenario ~ Variable, scales = 'free_x') +
+  scale_color_brewer(palette = 'Set1') +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_line(color = NA)) +
+  labs(y = 'Simulation',
+       x = 'Bias',
+       shape = 'In Conf. Int.',
+       title = paste('Sample of', length(samp_sims), 'Simulations'))
+```
+
+### Coverage Table
 `r tab_nums('coverage_tab')`
 ```{r coverage_tab}
 cover_df = res_long_df %>%
@@ -198,8 +358,8 @@ cover_tab = cover_df %>%
   select(Scenario:median_Truth, matches('ISEMP'), matches('SCOBI'))
 
 # which have coverage < 90% ?
-if(length(which(round(cover_tab$ISEMP_cov, 2) < 0.9)) > 0) {
-  cover_mat = data.frame(row = rep(which(round(cover_tab$ISEMP_cov, 2) < 0.9), each = 2),
+if(length(which(cover_tab$ISEMP_cov < 0.9)) > 0) {
+  cover_mat = data.frame(row = rep(which(cover_tab$ISEMP_cov < 0.9), each = 2),
                          col = grep('ISEMP', names(cover_tab)))
 } else {
   cover_mat = data.frame(row = NA,
@@ -207,7 +367,7 @@ if(length(which(round(cover_tab$ISEMP_cov, 2) < 0.9)) > 0) {
 }
 
 cover_mat %<>%
-  bind_rows(data.frame(row = rep(which(round(cover_tab$SCOBI_cov, 2) < 0.9), each = 2),
+  bind_rows(data.frame(row = rep(which(cover_tab$SCOBI_cov < 0.9), each = 2),
                        col = grep('SCOBI', names(cover_tab)))) %>%
   filter(!is.na(row))
 cover_mat %<>%
@@ -220,100 +380,15 @@ cover_tab %>%
 
 ```
 
-`r tab_nums('bias_tab')`
-```{r bias_tab}
-bias_tab = res_long_df %>%
-  filter(grepl('Unique', Variable)) %>%
-  mutate(Variable = revalue(Variable,
-                            c('Unique.Wild.Fish' = 'Wild',
-                              'Unique.Hatch.Fish' = 'Hatchery',
-                              'Unique.HNC.Fish' = 'HNC'))) %>%
-  group_by(Scenario, Variable, Model) %>%
-  summarise(Avg_Truth = round(median(Truth)),
-            Bias = median(bias),
-            Rel_Bias = median(rel_bias),
-            SE = median(se),
-            RMSE = sqrt(SE^2 + Bias^2))
+# Conclusions
 
-bias_tab %>%
-  pander()
-  # pander(emphasize.strong.rows = with(bias_tab, which(abs(RMSE - SE) > 10)))
-```
+*  The ISEMP model provides unbiased estimates of escapement for all three types of fish, with good coverage, and is much more robust to violations of the SCOBI model assumptions.
 
+*  When all the assumptions of the SCOBI model are met, it provides unbiased estimates with good coverage in its confidence intervals (e.g. baseline scenario).
 
-# Coverage Plots
+*  When night passage and re-ascension rates are not equal, the SCOBI estimates are proportionally biased by whatever the difference in those rates are.
 
-```{r coverage_fig}
-samp_sims = sample(unique(res_df$sim), 25)
+    * In the last six years, PIT tag data suggests that the typical year has very similar night-time passage and re-ascension rates, but as many as one third of the years show different rates. 
+    
 
-pd = .4
-
-res_long_df %>%
-  filter(sim %in% samp_sims) %>%
-  filter(grepl('^Unique', Variable)) %>%
-  mutate(Variable = revalue(Variable,
-                            c('Unique.Wild.Fish' = 'Wild',
-                              'Unique.Hatch.Fish' = 'Hatchery',
-                              'Unique.HNC.Fish' = 'HNC'))) %>%
-  mutate(low_bias = lowCI - Truth,
-         upp_bias = uppCI - Truth) %>%
-  ggplot(aes(y = sim,
-             x = bias,
-             color = Model,
-             shape = inCI)) +
-  scale_shape_manual(values = c('TRUE' = 19,
-                                'FALSE' = 1)) +
-  geom_errorbarh(aes(xmin = low_bias,
-                     xmax = upp_bias),
-                 position = position_dodge(width = pd)) +
-  geom_point(position = position_dodge(width = pd)) +
-  geom_vline(xintercept = 0,
-             linetype = 2) +
-  facet_grid(Scenario ~ Variable, scales = 'free_x') +
-  scale_color_brewer(palette = 'Set1') +
-  theme(axis.text.y = element_blank()) +
-  labs(y = 'Simulation',
-       x = 'Bias',
-       shape = 'In Conf. Int.',
-       title = paste('Sample of', length(samp_sims), 'Simulations'))
-```
-
-# Night Passage $!=$ Reascension
-
-The SCOBI model exhibits some bias when re-ascension and night-time passage rates are not equal. By adding the the total estimates for wild, hatchery and HNC fish, we can calculated an overall realized bias by substracting that from the underlying true number of individual fish that crossed LGR in the simulation. We can also calculate the true number of re-ascending fish and subtract the true number of fish that crossed during the night. This difference explains the bias in the SCOBI estimates very well.
-
-```{r night_reasc_bias}
-bias_df = res_df %>%
-  filter(Scenario == 'N-R',
-         Variable %in% c('Night.Fish', 'Reascent.Fish')) %>%
-  select(Scenario, sim, Variable, Truth) %>%
-  spread(Variable, Truth) %>%
-  mutate(pot_bias = Reascent.Fish - Night.Fish) %>%
-  left_join(res_df %>%
-              filter(Scenario == 'N-R',
-                     grepl('Unique', Variable)) %>%
-              group_by(Scenario, sim) %>%
-              summarise(Uni.Fish.Truth = sum(Truth),
-                        Tot.Fish.SCOBI = sum(SCOBI_est)) %>%
-              mutate(bias = Tot.Fish.SCOBI - Uni.Fish.Truth))
-
-mod = lm(bias ~ pot_bias, data = bias_df)
-
-bias_p = ggplot(aes(pot_bias, 
-                    bias), 
-                data = bias_df) +
-  geom_point() +
-  geom_abline(color = 'red',
-              linetype = 2) +
-  geom_smooth(method = lm) +
-    labs(x = 'Reascent - Night',
-       y = 'Total Bias') +
-  geom_text(data = data.frame(Coef = coef(mod)),
-            aes(x = -Inf, 
-                y = Inf,
-                label = paste0('y = ', round(Coef[1], 2), ' + ', round(Coef[2], 2), 'x')),
-            hjust = -0.5,
-            vjust = 3)
-
-print(bias_p)
-```
+*  In addition, if there is some observation error in the window counts, the uncertainly of the SCOBI model is unrealistically small. The impact of this grows with the number of fish crossing Lower Granite, so the biggest noticeable shortcoming in our simulations was for hatchery fish. 
