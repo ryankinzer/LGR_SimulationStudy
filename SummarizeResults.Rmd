@@ -184,6 +184,12 @@ rel_bias_p = res_long_df %>%
 ```
 
 ```{r fig_tab_captions}
+inputs_tab = tab_nums('inputs_tab',
+                      'Variables with inputs into the simulated data and associated values from data sources. Values for variables that are fixed in all simulations are shown in the Model column.')
+
+scenario_tab = tab_nums('scenario_tab',
+                        'Which variables change in different simulation scenarios, and what those values are.')
+
 abs_bias_fig = fig_nums('abs_bias_fig',
                         'Boxplots showing distrbution of bias across all simulations, for each variable of interest.')
 
@@ -208,9 +214,77 @@ The purpose of this study is to evaluate the performance of two methods for esti
 
 # Methods
 
-Using a simulation framework allows us to evaluate each model's performance in relation to a known "truth". Therefore, we developed such a framework with flexible inputs that could be chosen by the user. 
+Using a simulation framework allows us to evaluate each model's performance in relation to a known "truth". Therefore, we developed such a framework with flexible inputs that could be chosen by the user (`r tab_nums('inputs_tab', display = 'c')`. We chose to focus on 3 variables for this study: trap rate, night passage / fallback rates and observer error at the window. The values we assigned to these variables are shown in `r tab_nums('scenario_tab', display = 'c')`. All combinations of these values led to a total of 12 scenarios to test. We simulated 500 data sets for each of those 12 scenarios, and fit the SCOBI and ISEMP models to each data set. We recorded the simulated true values of wild, hatchery and hatchery no-clip fish as well as the estimates and 95% confidence intervals for each model.  
 
-***Ryan, can you add to this, and include Table 1 and 2 from the "Realized and Proposed Sim Inputs.docx" document?***
+`r tab_nums('inputs_tab')`
+```{r inputs_tab}
+data.frame(Variable = c('N at LGR',
+                        'Number of Populations',
+                        'Mean of Average Run Timing',
+                        'Std. Dev. of Average Run Timing',
+                        'Hatchery Proportion',
+                        'HNC Proportion',
+                        'Percent of pops with HOR',
+                        'Percent of pops with HNC',
+                        'Fallback',
+                        'Re-ascension Rate',
+                        'Night Passage Rate',
+                        'Window Viewing Rate',
+                        'Window Observation Error Rate',
+                        'Previously Marked Rate',
+                        'Ladder Detection Probability',
+                        'Start / End Date',
+                        'Trap Rate'),
+           Observed = c('50 - 200K total (2000 - 2015 data)',
+                        '7 MPGs and 43 populations',
+                        'Spring: 140 Jul.day, Summer: 171 Jul.day (2015 data)',
+                        'Spring: 16, Summer: 25 (2015 data)',
+                        '70 - 80% (2010 - 2014 trap data)',
+                        '15% of wild component (2014 data)',
+                        '~ 50%',
+                        '~ 10%',
+                        '7-10% for steelhead at MCN (Wagner 1990, Wagner and Hillson 1991) <br> 0.6 - 5.8% Sp/Sm Chinook at LGR (1996-2001) <br> 2.7 - 8.4% steelhead (Boggs et al. 2004)',
+                        '3-12% (avg ~ 6%) (LGR PIT tag data 2010-2015) <br> 50 - 100% after fallback Sp/Sm Chinook, 1996-2001 <br> 36-67% for steelhead (Boggs et al. 2004)',
+                        '4-9% (avg ~ 6%) (PIT tag data 2010-2015) <br> nothing in Boggs et al. 2004',
+                        '50/60 minutes during day (USACE expands counts by 1.2 with no error)',
+                        '0-12% for counts > 100 fish (Hatch et al. 1992)',
+                        '3.5-6.5% (2010-2015 trap data)',
+                        '99%',
+                        'March 1 / August 17',
+                        'Max of 800/day, set relative to total run size'),
+           Model = c(100000,
+                     '17 spring & 5 summer',
+                     rep(NA, 4),
+                     '50%',
+                     '10%',
+                     'Varies',
+                     '100%',
+                     'Varies',
+                     '5/6, expanded by 1.2',
+                     'Varies',
+                     '5%',
+                     '99%',
+                     'March 1 / August 17',
+                     'Varies')) %>%
+  pander()
+```
+
+`r tab_nums('scenario_tab')`
+```{r scenario_tab}
+data.frame(Variable = c(rep('Trap Rate', 2),
+                        rep('Night Passage / Fallback', 2),
+                        rep('Window Obs. Error', 3)),
+           Scenario = c('Constant (15%)',
+                        'Shut down (15% except 0% for 3 weeks in early Aug)',
+                        'Equal (6%)',
+                        'Unequal (Fallback = 10%, Night passage = 5%)',
+                        'None',
+                        'Low (5%)',
+                        'High (15%)')) %>%
+  pander()
+
+           
+```
 
 We assessed the models' performance by examining the potential bias in the estimates, both absolute and relative, and by assessing the coverage probabilities: the proportion of simulations when the 95% credible intervals or confidence intervals included the truth. Ideally, we would like to use a model with unbiased estimates, and with coverage probabilities close to 95%. 
 
