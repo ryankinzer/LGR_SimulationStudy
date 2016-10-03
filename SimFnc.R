@@ -42,12 +42,12 @@ SimulateLGRdata = function(N.lgr = 100000,
   # trap.rate.df: data.frame with Week and trap.rate columns
   
   # required packages to run this function
-  library(MCMCpack)
-  library(lubridate)
-  library(plyr)
-  library(dplyr)
-  library(tidyr)
-  library(magrittr)
+  # library(MCMCpack)
+  # library(lubridate)
+  # library(plyr)
+  # library(dplyr)
+  # library(tidyr)
+  # library(magrittr)
   
   # quick clean-up of column names
   trap.rate.df %<>%
