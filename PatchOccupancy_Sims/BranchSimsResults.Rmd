@@ -1,0 +1,501 @@
+---
+title: "Branching Model Simulation Results"
+author: "Kevin See"
+date: "November 1, 2016"
+output:
+  html_document:
+    fig_caption: yes
+    fig_height: 8
+    fig_width: 8
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    collapsed: yes
+    smooth_scroll: yes
+  pdf_document:
+    fig_caption: yes
+    fig_height: 7
+    fig_width: 7
+csl: /Users/kevin/Documents/Bibliography/StyleFiles/ecology.csl
+bibliography:
+- /Users/kevin/Documents/Bibliography/Research.bib
+- /Users/kevin/Documents/Bibliography/SoftwareCitations.bib
+---
+
+```{r intro_prep, message=F, warning=F, results='hide', echo = F}
+library(knitr)
+library(captioner)
+library(pander)
+opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+panderOptions('big.mark', ',') # to use , in large numbers in tables
+panderOptions('table.split.table', Inf) # so as to not break table onto new lines
+
+tab_nums = captioner(prefix = 'Table')
+fig_nums = captioner()
+
+library(lubridate)
+library(magrittr)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(jagsUI)
+library(stringr)
+library(ggplot2)
+
+theme_set(theme_bw())
+
+```
+# Simulation Scenarios
+
+# Results
+
+## Baseline
+
+```{r load_baseline}
+load('SimFits/Baseline_2000tags.rda')
+
+res_df = ldply(res_list, .id = 'sim') %>%
+  tbl_df() %>%
+  mutate(param_type = NA,
+         param_type = ifelse(grepl('det_p', param), 'Detection', param_type),
+         param_type = ifelse(grepl('tot_esc', param), 'Tot_Escape', param_type),
+         param_type = ifelse(grepl('main_p', param), 'Movement', param_type),
+         param_type = ifelse(grepl('week_esc', param), 'Week_Escape', param_type)) %>%
+  mutate(branch = NA,
+         branch = ifelse(param_type %in% c('Detection', 'Tot_Escape'), gsub(']', '', sapply(str_split(param, '\\['), function(x) x[2])), branch),
+         branch = ifelse(grepl('week_esc', param) | grepl('main_p', param), gsub(']', '', sapply(str_split(param, ','), function(x) x[2])), branch),
+         site = ifelse(as.integer(branch) %% 2 == 0, 'upstream', 'downstream'),
+         site = ifelse(param_type == 'Detection', site, NA),
+         branch = ifelse(grepl('det_p', param), ceiling(as.integer(branch) / 2), branch)) %>%
+  mutate(week = NA,
+         week = ifelse(grepl('week_esc', param) | grepl('main_p', param), gsub('\\[', '', sapply(str_split(param, ','), function(x) str_sub(x[1], -2))), week)) %>%
+  mutate(branch = factor(branch, levels = c(1:10)),
+         branch = revalue(branch, 
+                          c('10' = 'BB')),
+         week = as.integer(week)) %>%
+  mutate(pop_size = ifelse(branch %in% c(1:3), 'Small',
+                           ifelse(branch %in% c(4:6), 'Medium',
+                                  ifelse(branch %in% c(7:9), 'Large', 'BB'))),
+         pop_size = factor(pop_size, levels = c('Small', 'Medium', 'Large', 'BB'))) %>%
+  mutate(det_prob = ifelse(branch %in% c(1, 4, 7), 'Low/Low',
+                           ifelse(branch %in% c(2, 5, 8), 'Low/High',
+                                  ifelse(branch %in% c(3, 6, 9), 'High/High', 'None'))),
+         det_prob = factor(det_prob, levels = c('Low/Low', 'Low/High', 'High/High', 'None'))) %>%
+  mutate(bias = `50%` - true_value,
+         rel_bias = bias / true_value,
+         inCI = ifelse(`2.5%` <= true_value & `97.5%` >= true_value, T, F))
+```
+
+```{r baseline_fig_tab_captions}
+baseline_detect_tab = tab_nums('baseline_detect_tab',
+                               'Average bias, relative bias and coverage probability for estimates of detection probabilities.')
+
+baseline_movement_tab = tab_nums('baseline_movement_tab',
+                                 'Average bias, relative bias and coverage probability for estimates of movement probabilities.')
+
+baseline_tot_esc_tab = tab_nums('baseline_tot_esc_tab',
+                                'Average bias, relative bias and coverage probability for estimates of total escapement.')
+
+baseline_week_esc_tab = tab_nums('baseline_week_esc_tab',
+                                 'Average bias, relative bias and coverage probability for estimates of weekly escapement.')
+
+baseline_tot_esc = fig_nums('baseline_tot_esc',
+                            'Boxplots of estimates of total escapement across all simulations, colored by population size, faceted by detection probabilities.')
+
+baseline_detection = fig_nums('baseline_detection',
+                            'Boxplots of estimates of downstream detection probabilites across all simulations, colored by population size, faceted by detection probabilities.')
+
+baseline_movement = fig_nums('baseline_movement',
+                             'Scatterplot of estimates of weekly movement probabilities on y-axis vs. the true movement probabilities on x-axis. Faceted left to right by detection probabilities and up and down by population size. The shading of the point depicts relative escapement that week (darker points had higher escapement).')
+
+baseline_week_esc = fig_nums('baseline_week_esc',
+                             'Scatterplot of estimates of weekly escapement estimates on y-axis vs. the true escapement on x-axis. Faceted left to right by detection probabilities and up and down by population size. The shading of the point depicts relative escapement that week (darker points had higher escapement).')
+
+```
+
+### Tables
+
+`r tab_nums('baseline_detect_tab')`
+```{r baseline_detect_tab}
+res_df %>%
+  filter(param_type == 'Detection',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob, Site = site) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+`r tab_nums('baseline_movement_tab')`
+```{r baseline_movement_tab}
+res_df %>%
+  filter(param_type == 'Movement',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+`r tab_nums('baseline_tot_esc_tab')`
+```{r baseline_tot_esc_tab}
+res_df %>%
+  filter(param_type == 'Tot_Escape',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+`r tab_nums('baseline_week_esc_tab')`
+```{r baseline_week_esc_tab}
+res_df %>%
+  filter(param_type == 'Week_Escape',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+### Figures
+
+```{r baseline_tot_esc, fig.cap = fig_nums('baseline_tot_esc')}
+res_df %>%
+  filter(param_type == 'Tot_Escape') %>%
+  ggplot(aes(x = branch,
+             y = rel_bias)) +
+  geom_boxplot(aes(fill = pop_size)) +
+  geom_hline(yintercept = 0,
+             linetype = 2,
+             color = 'darkgray') +
+  facet_wrap(~ det_prob, scales = 'free_x') +
+  labs(title = 'Total Escapement',
+       y = 'Relative Bias',
+       x = 'Branch',
+       fill = 'Pop Size')
+```
+
+```{r baseline_detection, fig.cap = fig_nums('baseline_detection')}
+# res_df %>%
+#   filter(param_type == 'Detection') %>%
+#   mutate(grp = paste(pop_size, det_prob, site, sep = '_')) %>%
+#   ggplot(aes(x = pop_size,
+#              y = rel_bias,
+#              group = grp,
+#              fill = site)) +
+#   geom_boxplot() +
+#   geom_hline(yintercept = 0,
+#              linetype = 2,
+#              color = 'darkgray') +
+#   facet_wrap(~ det_prob, scales = 'free') +
+#   labs(title = 'Detection Probability',
+#        y = 'Relative Bias',
+#        x = 'Population Size',
+#        fill = 'Site')
+
+
+res_df %>%
+  filter(param_type == 'Detection',
+         site == 'downstream') %>%
+  ggplot(aes(x = branch,
+             y = rel_bias)) +
+  geom_boxplot(aes(fill = pop_size)) +
+  geom_hline(yintercept = 0,
+             linetype = 2,
+             color = 'darkgray') +
+  facet_wrap(~ det_prob, scales = 'free_x') +
+  labs(title = 'Downstream Detection Probability',
+       y = 'Relative Bias',
+       x = 'Branch',
+       fill = 'Pop Size')
+```
+
+```{r baseline_movement, fig.cap = fig_nums('baseline_movement')}
+res_df %>%
+  filter(param_type == 'Movement',
+         true_value > 0,
+         true_value < 1) %>%
+  left_join(res_df %>%
+              filter(param_type == 'Week_Escape') %>%
+              select(sim, branch, week, week_escape = true_value) %>%
+              distinct()) %>%
+  group_by(branch) %>%
+  mutate(rel_escape = week_escape / max(week_escape)) %>%
+  ungroup() %>%
+  filter(branch != 'BB') %>%
+  ggplot(aes(x = true_value,
+             y = `50%`)) +
+  geom_point(aes(alpha = rel_escape)) +
+  scale_alpha_continuous(range = c(0.05, 1)) +
+  facet_grid(pop_size ~ det_prob, scales = 'fixed') +
+  geom_abline(linetype = 2,
+              color = 'red') +
+  scale_x_continuous(trans = 'logit') +
+  scale_y_continuous(trans = 'logit') +
+  labs(title = 'Movement Probability',
+       x = 'Truth',
+       y = 'Estimate',
+       alpha = 'Escapement (relative to max)') +
+  theme(legend.position = 'bottom')
+```
+
+
+```{r baseline_week_esc, fig.cap = fig_nums('baseline_week_esc'), eval=F}
+res_df %>%
+  filter(param_type == 'Week_Escape',
+         true_value > 0) %>%
+  group_by(branch) %>%
+  mutate(rel_escape = true_value / max(true_value)) %>%
+  ungroup() %>%
+  filter(branch != 'BB') %>%
+  ggplot(aes(x = true_value,
+             y = `50%`)) +
+  geom_point(aes(alpha = rel_escape)) +
+  scale_alpha_continuous(range = c(0.05, 1)) +
+  facet_grid(pop_size ~ det_prob, scales = 'fixed') +
+  geom_abline(linetype = 2,
+              color = 'red') +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(trans = 'log10') +
+  labs(title = 'Weekly Escapement',
+       x = 'Truth',
+       y = 'Estimate',
+       alpha = 'Escapement (relative to max)') +
+  theme(legend.position = 'bottom')
+```
+
+## Trap Down
+
+```{r load_trap_down}
+load('SimFits/TrapDown_2000tags.rda')
+
+res_df = ldply(res_list, .id = 'sim') %>%
+  tbl_df() %>%
+  mutate(param_type = NA,
+         param_type = ifelse(grepl('det_p', param), 'Detection', param_type),
+         param_type = ifelse(grepl('tot_esc', param), 'Tot_Escape', param_type),
+         param_type = ifelse(grepl('main_p', param), 'Movement', param_type),
+         param_type = ifelse(grepl('week_esc', param), 'Week_Escape', param_type)) %>%
+  mutate(branch = NA,
+         branch = ifelse(param_type %in% c('Detection', 'Tot_Escape'), gsub(']', '', sapply(str_split(param, '\\['), function(x) x[2])), branch),
+         branch = ifelse(grepl('week_esc', param) | grepl('main_p', param), gsub(']', '', sapply(str_split(param, ','), function(x) x[2])), branch),
+         site = ifelse(as.integer(branch) %% 2 == 0, 'upstream', 'downstream'),
+         site = ifelse(param_type == 'Detection', site, NA),
+         branch = ifelse(grepl('det_p', param), ceiling(as.integer(branch) / 2), branch)) %>%
+  mutate(week = NA,
+         week = ifelse(grepl('week_esc', param) | grepl('main_p', param), gsub('\\[', '', sapply(str_split(param, ','), function(x) str_sub(x[1], -2))), week)) %>%
+  mutate(branch = factor(branch, levels = c(1:10)),
+         branch = revalue(branch, 
+                          c('10' = 'BB')),
+         week = as.integer(week)) %>%
+  mutate(pop_size = ifelse(branch %in% c(1:3), 'Small',
+                           ifelse(branch %in% c(4:6), 'Medium',
+                                  ifelse(branch %in% c(7:9), 'Large', 'BB'))),
+         pop_size = factor(pop_size, levels = c('Small', 'Medium', 'Large', 'BB'))) %>%
+  mutate(det_prob = ifelse(branch %in% c(1, 4, 7), 'Low/Low',
+                           ifelse(branch %in% c(2, 5, 8), 'Low/High',
+                                  ifelse(branch %in% c(3, 6, 9), 'High/High', 'None'))),
+         det_prob = factor(det_prob, levels = c('Low/Low', 'Low/High', 'High/High', 'None'))) %>%
+  mutate(bias = `50%` - true_value,
+         rel_bias = bias / true_value,
+         inCI = ifelse(`2.5%` <= true_value & `97.5%` >= true_value, T, F))
+```
+
+```{r trap_down_fig_tab_captions}
+trap_down_detect_tab = tab_nums('trap_down_detect_tab',
+                               'Average bias, relative bias and coverage probability for estimates of detection probabilities.')
+
+trap_down_movement_tab = tab_nums('trap_down_movement_tab',
+                                 'Average bias, relative bias and coverage probability for estimates of movement probabilities.')
+
+trap_down_tot_esc_tab = tab_nums('trap_down_tot_esc_tab',
+                                'Average bias, relative bias and coverage probability for estimates of total escapement.')
+
+trap_down_week_esc_tab = tab_nums('trap_down_week_esc_tab',
+                                 'Average bias, relative bias and coverage probability for estimates of weekly escapement.')
+
+trap_down_tot_esc = fig_nums('trap_down_tot_esc',
+                            'Boxplots of estimates of total escapement across all simulations, colored by population size, faceted by detection probabilities.')
+
+trap_down_detection = fig_nums('trap_down_detection',
+                            'Boxplots of estimates of downstream detection probabilites across all simulations, colored by population size, faceted by detection probabilities.')
+
+trap_down_movement = fig_nums('trap_down_movement',
+                             'Scatterplot of estimates of weekly movement probabilities on y-axis vs. the true movement probabilities on x-axis. Faceted left to right by detection probabilities and up and down by population size. The shading of the point depicts relative escapement that week (darker points had higher escapement).')
+
+trap_down_week_esc = fig_nums('trap_down_week_esc',
+                             'Scatterplot of estimates of weekly escapement estimates on y-axis vs. the true escapement on x-axis. Faceted left to right by detection probabilities and up and down by population size. The shading of the point depicts relative escapement that week (darker points had higher escapement).')
+
+```
+
+### Tables
+
+`r tab_nums('trap_down_detect_tab')`
+```{r trap_down_detect_tab}
+res_df %>%
+  filter(param_type == 'Detection',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob, Site = site) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+`r tab_nums('trap_down_movement_tab')`
+```{r trap_down_movement_tab}
+res_df %>%
+  filter(param_type == 'Movement',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+`r tab_nums('trap_down_tot_esc_tab')`
+```{r trap_down_tot_esc_tab}
+res_df %>%
+  filter(param_type == 'Tot_Escape',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+`r tab_nums('trap_down_week_esc_tab')`
+```{r trap_down_week_esc_tab}
+res_df %>%
+  filter(param_type == 'Week_Escape',
+         true_value > 0) %>%
+  group_by(`Pop Size` = pop_size, Detection = det_prob) %>%
+  mutate_each(funs(times100 = ifelse(param_type %in% c('Detection', 'Movement'), . * 100, .)), `2.5%`:true_value) %>%
+  summarise(Bias = round(median(bias), 2),
+            `Rel. Bias` = round(median(rel_bias), 3),
+            Coverage = round(sum(inCI) / n(), 3)) %>%
+  pander()
+```
+
+### Figures
+
+```{r trap_down_tot_esc, fig.cap = fig_nums('trap_down_tot_esc')}
+res_df %>%
+  filter(param_type == 'Tot_Escape') %>%
+  ggplot(aes(x = branch,
+             y = rel_bias)) +
+  geom_boxplot(aes(fill = pop_size)) +
+  geom_hline(yintercept = 0,
+             linetype = 2,
+             color = 'darkgray') +
+  facet_wrap(~ det_prob, scales = 'free_x') +
+  labs(title = 'Total Escapement',
+       y = 'Relative Bias',
+       x = 'Branch',
+       fill = 'Pop Size')
+```
+
+```{r trap_down_detection, fig.cap = fig_nums('trap_down_detection')}
+# res_df %>%
+#   filter(param_type == 'Detection') %>%
+#   mutate(grp = paste(pop_size, det_prob, site, sep = '_')) %>%
+#   ggplot(aes(x = pop_size,
+#              y = rel_bias,
+#              group = grp,
+#              fill = site)) +
+#   geom_boxplot() +
+#   geom_hline(yintercept = 0,
+#              linetype = 2,
+#              color = 'darkgray') +
+#   facet_wrap(~ det_prob, scales = 'free') +
+#   labs(title = 'Detection Probability',
+#        y = 'Relative Bias',
+#        x = 'Population Size',
+#        fill = 'Site')
+
+
+res_df %>%
+  filter(param_type == 'Detection',
+         site == 'downstream') %>%
+  ggplot(aes(x = branch,
+             y = rel_bias)) +
+  geom_boxplot(aes(fill = pop_size)) +
+  geom_hline(yintercept = 0,
+             linetype = 2,
+             color = 'darkgray') +
+  facet_wrap(~ det_prob, scales = 'free_x') +
+  labs(title = 'Downstream Detection Probability',
+       y = 'Relative Bias',
+       x = 'Branch',
+       fill = 'Pop Size')
+```
+
+```{r trap_down_movement, fig.cap = fig_nums('trap_down_movement')}
+res_df %>%
+  filter(param_type == 'Movement',
+         true_value > 0,
+         true_value < 1) %>%
+  left_join(res_df %>%
+              filter(param_type == 'Week_Escape') %>%
+              select(sim, branch, week, week_escape = true_value) %>%
+              distinct()) %>%
+  group_by(branch) %>%
+  mutate(rel_escape = week_escape / max(week_escape)) %>%
+  ungroup() %>%
+  filter(branch != 'BB') %>%
+  ggplot(aes(x = true_value,
+             y = `50%`)) +
+  geom_point(aes(alpha = rel_escape)) +
+  scale_alpha_continuous(range = c(0.05, 1)) +
+  facet_grid(pop_size ~ det_prob, scales = 'fixed') +
+  geom_abline(linetype = 2,
+              color = 'red') +
+  scale_x_continuous(trans = 'logit') +
+  scale_y_continuous(trans = 'logit') +
+  labs(title = 'Movement Probability',
+       x = 'Truth',
+       y = 'Estimate',
+       alpha = 'Escapement (relative to max)') +
+  theme(legend.position = 'bottom')
+```
+
+
+```{r trap_down_week_esc, fig.cap = fig_nums('trap_down_week_esc'), eval=F}
+res_df %>%
+  filter(param_type == 'Week_Escape',
+         true_value > 0) %>%
+  group_by(branch) %>%
+  mutate(rel_escape = true_value / max(true_value)) %>%
+  ungroup() %>%
+  filter(branch != 'BB') %>%
+  ggplot(aes(x = true_value,
+             y = `50%`)) +
+  geom_point(aes(alpha = rel_escape)) +
+  scale_alpha_continuous(range = c(0.05, 1)) +
+  facet_grid(pop_size ~ det_prob, scales = 'fixed') +
+  geom_abline(linetype = 2,
+              color = 'red') +
+  scale_x_continuous(trans = 'log10') +
+  scale_y_continuous(trans = 'log10') +
+  labs(title = 'Weekly Escapement',
+       x = 'Truth',
+       y = 'Estimate',
+       alpha = 'Escapement (relative to max)') +
+  theme(legend.position = 'bottom')
+```

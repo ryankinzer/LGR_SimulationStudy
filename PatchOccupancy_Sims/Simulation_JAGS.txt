@@ -5,6 +5,7 @@ model{
 # n.pops.main - number of initial branches after leaving LGD + 1 (26)
 # n.weeks - number of weeks in model
 # obs.mat - matrix with a row for each fish and a column for each detection site, 1 = seen, 0 = not seen
+# lgr.esc - vector of weekly escapement past LGD
 
 #######################################################
 # Process model - which branch does each fish follow? #
@@ -15,7 +16,8 @@ model{
 # prior on log odds ratio for initial week
 for(j in 1:(n.pops.main - 1)) {
   # somewhat informative, but fairly vague prior
-  phi[1,j] ~ dnorm(-2, 1/16)
+#   phi[1,j] ~ dnorm(-2, 1/16)
+  phi[1,j] ~ dunif(-10, 5)
   exp_phi[1,j] <- exp(phi[1,j]) * main_dirch_vec[j]
 }
     
@@ -79,6 +81,20 @@ for (i in 1:n.fish) {
     # second array
     obs.mat[i,(j*2)] ~ dbern( det_p[(j*2)] * catexp[i,j] )
   }
+}
+
+###############################################################
+# Estimates of total escapement, using true weekly escapement #
+###############################################################
+
+for(j in 1:n.pops.main) {
+  for(t in 1:n.weeks) {
+    week_esc[t,j] <- main_p[t,j] * lgr.esc[t]
+  }
+}
+
+for(j in 1:n.pops.main) {
+  tot_esc[j] <- sum(week_esc[,j])
 }
 
 }
