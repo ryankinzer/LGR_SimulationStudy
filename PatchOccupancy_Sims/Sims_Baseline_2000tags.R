@@ -1,7 +1,7 @@
 # Author: Kevin See
 # Purpose: Run branching model scenarios
 # Created: 9/29/2016
-# Last Modified: 9/29/2016
+# Last Modified: 10/25/2016
 # Notes: 
 
 #-----------------------------------------------------------------
@@ -27,7 +27,7 @@
 # # if recipients = 1, this should go to phone (2 should go to Chrome)
 # pbPost("note", "Test", "This came from R!", recipients=c(1))
 # 
-# install.packages(c('lubridate', 'magrittr', 'dplyr', 'tidyr', 'jagsUI'))
+# install.packages(c('lubridate', 'magrittr', 'dplyr', 'tidyr', 'jagsUI', 'MCMCpack'))
 
 #-----------------------------------------------------------------
 library(MCMCpack)
@@ -37,9 +37,6 @@ library(plyr)
 library(dplyr)
 library(tidyr)
 library(jagsUI)
-library(ggplot2)
-library(stringr)
-
 # library(RPushbullet)
 
 setwd('PatchOccupancy_Sims')
@@ -85,7 +82,7 @@ jags.params = c('main_p', 'det_p', 'week_esc', 'tot_esc')
 
 #-----------------------------------------------------------------
 # how mnay simulations to do?
-n_sim = 2
+n_sim = 100
 
 # set trap rate on weekly basis
 # make it consistent and constant throughout the season
@@ -105,19 +102,26 @@ sim_truth = data.frame(param = c(paste0('det_p[', 1:18, ']'),
 # run simulations
 #-----------------------------------------------------------------
 # set up list to store results
-res = vector('list', n_sim)
+res_list = vector('list', n_sim)
+names(res_list) = 1:n_sim
+
+n_tags = vector('integer', n_sim)
+names(n_tags) = 1:n_sim
+
 
 set.seed(3)
 for(i in 1:n_sim) {
-
+  
   sim = SimulateBranchData(trap.rate.df = my_trap_rate)
   
+  min_week = min(sim$lgr_truth$Week)
+  
   valid_df = sim$valid_tags %>%
-    mutate(Week = Week - min(Week) + 1) %>%
+    mutate(Week = Week - min_week + 1) %>%
     mutate(id = 1:n())
   
   lgr_truth = sim$lgr_truth %>%
-    mutate(Week = Week - min(Week) + 1) %>%
+    mutate(Week = Week - min_week + 1) %>%
     mutate(id = 1:n())
   
   sim_true = sim_truth %>%
@@ -146,7 +150,7 @@ for(i in 1:n_sim) {
                 mutate(true_value = branch_fish / tot_fish,
                        param = paste0('main_p[', Week, ',', branch, ']')) %>%
                 select(param, true_value))
-                
+  
   
   jags.data = list('n.pops.main' = length(unique(valid_df$Branch)),
                    'n.weeks' = max(valid_df$Week),
@@ -190,14 +194,14 @@ for(i in 1:n_sim) {
                               parallel = T,
                               DIC = FALSE,
                               verbose = T))
-  cat(paste('Took', round(c(proc.time() - ptm)[3] / 60, 2), 'min to run. \n'))
+  cat(paste('Sim', i, 'took', round(c(proc.time() - ptm)[3] / 60, 2), 'min to run. \n'))
   if(class(branch_mod) == 'try-error') {
     rm(sim, valid_df, lgr_truth, jags.data, branch_mod, sim_true)
     next
   }
   
   # pull out what to save
-  res[[i]] = summary(branch_mod)$quantiles %>%
+  res_list[[i]] = summary(branch_mod)$quantiles %>%
     as.data.frame() %>% 
     mutate(param = rownames(.)) %>%
     select(param, everything()) %>%
@@ -205,141 +209,12 @@ for(i in 1:n_sim) {
     left_join(sim_true) %>%
     mutate(true_value = ifelse(is.na(true_value), 0, true_value))
   
+  n_tags[i] = nrow(valid_df)
+  
   rm(sim, valid_df, lgr_truth, jags.data, branch_mod, sim_true)
 }
 
-res_df = ldply(res, .id = 'sim')
+# save results
+save(res_list, n_tags, file = 'SimFits/Baseline_2000tags.rda')
 
-# compare with truth
-summ = summary(branch_mod)$quantiles %>%
-  as.data.frame() %>% 
-  mutate(param = rownames(.)) %>%
-  tbl_df() %>%
-  filter(grepl('^main_p', param)) %>%
-  mutate(week_num = ifelse(grepl('^main_p', param), str_sub(param, 8, 9), NA),
-         week_num = gsub('\\,', '', week_num),
-         week_num = as.integer(as.character(week_num)),
-         branch = sapply(str_split(param, '\\,'), function(y) y[2]),
-         branch = gsub(']', '', branch),
-         branch = as.integer(branch))
-
-ggplot(summ,
-       aes(x = week_num,
-           y = `50%`,
-           color = as.factor(branch))) +
-  geom_ribbon(aes(ymin = `25%`,
-                  ymax = `75%`,
-                  fill = as.factor(branch)),
-              alpha = 0.2,
-              color = NA) +
-  scale_color_brewer(palette = 'Paired') +
-  scale_fill_brewer(palette = 'Paired') +
-  geom_line() +
-  theme_bw()
-
-lgr_truth %>%
-  group_by(Week, Branch) %>%
-  summarise(branch_fish = n_distinct(id)) %>%
-  left_join(lgr_truth %>%
-              group_by(Week) %>%
-              summarise(tot_fish = n_distinct(id))) %>%
-  mutate(move_prob = branch_fish / tot_fish,
-         move_prob_se = sqrt(move_prob * (1 - move_prob) / tot_fish)) %>%
-  ggplot(aes(x = Week,
-             y = move_prob,
-             color = Branch)) +
-  geom_ribbon(aes(ymin = move_prob - move_prob_se,
-                  ymax = move_prob + move_prob_se,
-                  fill = Branch),
-              alpha = 0.2,
-              color = NA) +
-  scale_color_brewer(palette = 'Paired') +
-  scale_fill_brewer(palette = 'Paired') +
-  geom_line() +
-  theme_bw()
-
-lgr_truth %>%
-  group_by(Week, Branch) %>%
-  summarise(branch_fish = n_distinct(id)) %>%
-  left_join(lgr_truth %>%
-              group_by(Week) %>%
-              summarise(tot_fish = n_distinct(id))) %>%
-  mutate(move_prob = branch_fish / tot_fish,
-         move_prob_se = sqrt(move_prob * (1 - move_prob) / tot_fish)) %>%
-  left_join(summ %>%
-              select(Week = week_num,
-                     Branch = branch,
-                     lowCI = `2.5%`,
-                     est = `50%`,
-                     uppCI = `97.5%`) %>%
-            mutate(Branch = paste0('Branch-', Branch),
-                   Branch = revalue(Branch,
-                             c('Branch-10' = 'Black-Box')))) %>%
-  ggplot(aes(x = move_prob,
-             y = est,
-             color = Branch)) +
-  geom_errorbar(aes(ymin = lowCI,
-                    ymax = uppCI)) +
-  geom_errorbarh(aes(xmin = move_prob + qnorm(0.025) * move_prob_se,
-                     xmax = move_prob + qnorm(0.975) * move_prob_se)) +
-  geom_point(aes(size = branch_fish)) +
-  geom_abline(linetype = 2,
-              color = 'darkgray') +
-  facet_wrap(~ Branch, scales = 'free')
-
-
-
-lgr_truth %>%
-  group_by(Week) %>%
-  summarise(tot_fish = n_distinct(id)) %>%
-  left_join(summ %>%
-              select(Week = week_num,
-                     branch, matches('%'))) %>%
-  mutate(lowCI = round(tot_fish * `2.5%`),
-         est = round(tot_fish * `50%`),
-         uppCI = round(tot_fish * `97.5%`)) %>%
-  filter(!is.na(branch)) %>%
-  group_by(branch) %>%
-  summarise_each(funs(sum(., na.rm = T)), lowCI, est, uppCI) %>%
-  mutate(branch = paste0('Branch-', branch),
-         branch = revalue(branch,
-                          c('Branch-10' = 'Black-Box'))) %>%
-  left_join(lgr_truth %>%
-              group_by(branch = Branch) %>%
-              summarise(truth = n_distinct(id)))
-
-
-det_est = summary(branch_mod)$quantiles %>%
-  as.data.frame() %>% 
-  mutate(param = rownames(.)) %>%
-  tbl_df() %>%
-  filter(grepl('^det_p', param)) %>%
-  mutate(site_num = str_sub(param, 7, 8),
-         site_num = gsub(']', '', site_num),
-         site_num = as.integer(site_num),
-         branch = ceiling(site_num / 2),
-         site = ifelse(site_num %% 2 == 1, 'Lower', 'Upper')) %>%
-  select(branch, site, everything(), -param, -site_num) %>%
-  mutate(pop_size = rep(c('small', 'med', 'large'), each = 6),
-         true_val = rep(c(0.5, 0.5, 0.5, 0.95, 0.95, 0.95), 3)) %>%
-  mutate(inCI = ifelse(`2.5%` <= true_val & `97.5%` >= true_val, T, F))
-
-#-------------------------------------
-# diagnostics
-#-------------------------------------
-library(ggmcmc)
-my_ggs = ggs(branch_mod, family = c('main_p'))
-tmp = my_ggs %>%
-  filter(value > 0) %>%
-  filter(grepl('\\,1\\]', Parameter))
-attributes(tmp)[names(attributes(my_ggs))[!names(attributes(my_ggs)) %in% names(attributes(tmp))]] = attributes(my_ggs)[!names(attributes(my_ggs)) %in% names(attributes(tmp))]
-attributes(tmp)$class = attributes(my_ggs)$class
-my_ggs = tmp
-
-ggs_traceplot(my_ggs) +
-  facet_wrap(~ Parameter, scales = 'free')
-ggs_density(my_ggs) +
-  facet_wrap(~ Parameter, scales = 'free')
-ggs_Rhat(my_ggs)
-ggs_geweke(my_ggs)
-ggs_autocorrelation(my_ggs)
+pbPost("note", "Baseline sims are done", recipients=1)
